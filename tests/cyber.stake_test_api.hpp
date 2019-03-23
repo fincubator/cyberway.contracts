@@ -13,15 +13,30 @@ struct stake_purpose_param {
     uint16_t payout_steps_num;
 };
 
+struct stake_purpose_funds {
+    int64_t balance = 0;
+    int64_t proxied = 0;
+    int64_t shares_sum = 0;
+    int64_t own_share = 0;
+};
+
 struct cyber_stake_api: base_contract_api {
 public:
     cyber_stake_api(golos_tester* tester, name code)
     :   base_contract_api(tester, code){}
+    
+    std::vector<stake_purpose_param> purposes;
+    size_t get_purpose_index(symbol_code purpose_code) const {
+        auto ret_itr = std::find_if(purposes.begin(), purposes.end(),
+            [purpose_code](const stake_purpose_param &p) { return p.code == purpose_code; });
+        BOOST_REQUIRE(ret_itr != purposes.end());
+        return std::distance(purposes.begin(), ret_itr);
+    }
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol, std::vector<symbol_code> purpose_codes, 
             std::vector<uint8_t> max_proxies, int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num) {
-        std::vector<stake_purpose_param> purposes;
+        BOOST_REQUIRE(purposes.empty());
         for (auto p : purpose_codes) {
             purposes.emplace_back(stake_purpose_param {
                 .code = p, 
@@ -46,39 +61,37 @@ public:
         );
     }
     
-    action_result delegate(account_name grantor_name, account_name agent_name, asset quantity, symbol_code purpose_code) {
-        BOOST_TEST_MESSAGE("--- " << grantor_name <<  " delegates " << quantity 
-            <<  "(" << purpose_code << ")" << " to " << agent_name);
+    //TODO:
+    action_result delegate(account_name grantor_name, account_name agent_name, symbol_code token_code, int16_t pct = cyber::config::_100percent) {
+        BOOST_TEST_MESSAGE("--- " << grantor_name <<  " delegates " << double(100 * pct) / cyber::config::_100percent << " pct to " << agent_name);
         return push(N(delegate), grantor_name, args()
             ("grantor_name", grantor_name)
             ("agent_name", agent_name)
-            ("quantity", quantity)
-            ("purpose_code", purpose_code)
+            ("token_code", token_code)
+            ("pct", pct)
         );
     }
     
-    action_result setgrntterms(account_name grantor_name, account_name agent_name, symbol_code token_code, symbol_code purpose_code, 
+    action_result setgrntterms(account_name grantor_name, account_name agent_name, symbol_code token_code,
         int16_t pct, int16_t break_fee = cyber::config::_100percent, int64_t break_min_own_staked = 0) {
         BOOST_TEST_MESSAGE("--- " << grantor_name <<  " sets grant terms for " << agent_name);
         return push(N(setgrntterms), grantor_name, args()
             ("grantor_name", grantor_name)
             ("agent_name", agent_name)
             ("token_code", token_code)
-            ("purpose_code", purpose_code)
             ("pct", pct)
             ("break_fee", break_fee)
             ("break_min_own_staked", break_min_own_staked)        
         );
     }
     
-    action_result recall(account_name grantor_name, account_name agent_name, symbol_code token_code, symbol_code purpose_code, int16_t pct) {
+    action_result recall(account_name grantor_name, account_name agent_name, symbol_code token_code, int16_t pct) {
         BOOST_TEST_MESSAGE("--- " << grantor_name <<  " recalls " << pct 
-            <<  "(" << token_code << ", " << purpose_code << ")" << " from " << agent_name);
+            <<  "(" << token_code << ")" << " from " << agent_name);
         return push(N(recall), grantor_name, args()
             ("grantor_name", grantor_name)
             ("agent_name", agent_name)
             ("token_code", token_code)
-            ("purpose_code", purpose_code)
             ("pct", pct)
         );
     }
@@ -107,29 +120,26 @@ public:
         );
     }
     
-    action_result setproxylvl(account_name account, symbol_code token_code, symbol_code purpose_code, uint8_t level) {
+    action_result setproxylvl(account_name account, symbol_code token_code, uint8_t level) {
         BOOST_TEST_MESSAGE("--- " << account <<  " sets proxy level");
         return push(N(setproxylvl), account, args()
             ("account", account)
             ("token_code", token_code)
-            ("purpose_code", purpose_code)
             ("level", level)
         );
     }
-    action_result setproxyfee(account_name account, symbol_code token_code, symbol_code purpose_code, int16_t fee) {
+    action_result setproxyfee(account_name account, symbol_code token_code, int16_t fee) {
         return push(N(setproxyfee), account, args()
             ("account", account)
             ("token_code", token_code)
-            ("purpose_code", purpose_code)
             ("fee", fee)
         );
     }
     
-    action_result updatefunds(account_name account, symbol_code token_code, symbol_code purpose_code) {
+    action_result updatefunds(account_name account, symbol_code token_code) {
         return push(N(updatefunds), account, args()
             ("account", account)
             ("token_code", token_code)
-            ("purpose_code", purpose_code)
         );
     }
     
@@ -151,7 +161,7 @@ public:
     
     action_result register_candidate(account_name account, symbol_code token_code) {
         
-        auto ret = setproxylvl(account, token_code, symbol_code(), 0);
+        auto ret = setproxylvl(account, token_code, 0);
         if(ret != base_tester::success())
             return ret;
          return push(N(setkey), account, args()
@@ -167,11 +177,18 @@ public:
         for(auto& v : all) {
             auto o = mvo(v);
             if (v["account"].as<account_name>() == account && 
-                v["purpose_code"].as<symbol_code>() == purpose_code &&
                 v["token_code"].as<symbol_code>() == token_symbol.to_symbol_code()) 
             {
                 o.erase("id");
                 o.erase("signing_key");
+                o["purpose_code"] = purpose_code;
+                auto pf_vec = o["purpose_funds"].as<std::vector<stake_purpose_funds> >();
+                auto pf = pf_vec[get_purpose_index(purpose_code)];
+                o["balance"] = pf.balance;
+                o["proxied"] = pf.proxied;
+                o["shares_sum"] = pf.shares_sum;
+                o["own_share"] = pf.own_share;
+                o.erase("purpose_funds");
                 v = o;
                 return v;
             }
@@ -232,3 +249,4 @@ public:
 }} // eosio::testing
 
 FC_REFLECT(eosio::testing::stake_purpose_param, (code)(payout_step_lenght)(payout_steps_num) )
+FC_REFLECT(eosio::testing::stake_purpose_funds, (balance)(proxied)(shares_sum)(own_share) )

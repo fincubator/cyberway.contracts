@@ -44,22 +44,12 @@
             "fields": [
                 { "type": "name",           "name": "grantor_name" },
                 { "type": "name",           "name": "agent_name"  },
-                { "type": "asset",          "name": "quantity"  },
-                { "type": "symbol_code",    "name": "purpose_code"  }
-            ]
-        },{
-            "name": "recall_args",
-            "base": "",
-            "fields": [
-                { "type": "name",           "name": "grantor_name" },
-                { "type": "name",           "name": "agent_name"  },
                 { "type": "symbol_code",    "name": "token_code"  },
-                { "type": "symbol_code",    "name": "purpose_code"  },
                 { "type": "int16",          "name": "pct"  }
             ]
         },{
             "name": "setterms_args",
-            "base": "recall_args",
+            "base": "delegate_args",
             "fields": [
                 { "type": "int16",          "name": "break_fee"  },
                 { "type": "int64",          "name": "break_min_own_staked"  }
@@ -81,38 +71,42 @@
                 { "type": "symbol_code",    "name": "purpose_code"  }
             ]
         },{
+            "name": "setconditions_args",
+            "base": "",
+            "fields": [
+                { "type": "name",           "name": "account" },
+                { "type": "symbol_code",    "name": "token_code"  }
+            ]
+        },{
             "name": "setproxylvl_args",
-            "base": "claim_args",
+            "base": "setconditions_args",
             "fields": [
                 { "type": "uint8",          "name": "level"  }
             ]
         },{
             "name": "setproxyfee_args",
-            "base": "claim_args",
+            "base": "setconditions_args",
             "fields": [
                 { "type": "int16",          "name": "fee"  }
             ]
         },{
             "name": "setminstaked_args",
-            "base": "claim_args",
+            "base": "setconditions_args",
             "fields": [
                 { "type": "int64",          "name": "min_own_staked"  }
+            ]
+        },{
+            "name": "setkey_args",
+            "base": "setconditions_args",
+            "fields": [
+                { "type": "public_key",     "name": "signing_key"  }
             ]
         },{
             "name": "updatefunds_args",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "account" },
-                { "type": "symbol_code",    "name": "token_code"  },
-                { "type": "symbol_code",    "name": "purpose_code"  }
-            ]
-        },{
-            "name": "setkey_args",
-            "base": "",
-            "fields": [
-                { "type": "name",           "name": "account" },
-                { "type": "symbol_code",    "name": "token_code"  },
-                { "type": "public_key",     "name": "signing_key"  }
+                { "type": "symbol_code",    "name": "token_code"  }
             ]
         }
     ],
@@ -136,7 +130,7 @@
             "ricardian_contract": ""
         },{
             "name": "recall",
-            "type": "recall_args",
+            "type": "delegate_args",
             "ricardian_contract": ""
         },{
             "name": "withdraw",

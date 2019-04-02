@@ -43,7 +43,7 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
     auto ret = total_funds && agent->shares_sum ? safe_prop(agent->shares_sum, amount, total_funds) : amount;
     
     agents_idx.modify(agent, name(), [&](auto& a) {
-        a.balance += remaining_amount;
+        a.set_balance(a.balance + remaining_amount);
         a.proxied += amount - remaining_amount;
         a.shares_sum += ret;
     });
@@ -114,7 +114,7 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
     }
     
     agents_idx.modify(grantor_as_agent, name(), [&](auto& a) {
-        a.balance -= quantity.amount;
+        a.set_balance(a.balance - quantity.amount);
         a.proxied += quantity.amount;
     });
 }
@@ -301,7 +301,7 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
     }
     
     agents_idx.modify(agent, name(), [&](auto& a) {
-        a.balance += balance_diff;
+        a.set_balance(a.balance + balance_diff);
         a.shares_sum += shares_diff;
         a.own_share += shares_diff;
     });
@@ -405,7 +405,10 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     eosio_assert(!level || proxies_num <= param.max_proxies[level - 1], "can't set proxy level, user has too many proxies");
 
     if(!emplaced) {
-        agents_idx.modify(agent, name(), [&](auto& a) { a.proxy_level = level; a.ultimate = !level; });
+        agents_idx.modify(agent, name(), [&](auto& a) { 
+            a.proxy_level = level;
+            a.votes = level ? -1 : a.balance;
+        });
     }
 } 
  
@@ -465,7 +468,7 @@ stake::agents_idx_t::const_iterator stake::get_agent_itr(symbol_code token_code,
             .token_code = token_code,
             .account = agent_name,
             .proxy_level = static_cast<uint8_t>(proxy_level_for_emplaced),
-            .ultimate = !proxy_level_for_emplaced,
+            .votes = proxy_level_for_emplaced ? -1 : 0,
             .last_proxied_update = time_point_sec(::now())
         };});
         
@@ -497,12 +500,12 @@ void stake::change_balance(name account, asset quantity) {
     
     auto actual_amount = std::max(quantity.amount, -agent->balance);
     if (agent->get_total_funds()) {
-        agents_idx.modify(agent, name(), [&](auto& a) { a.balance += actual_amount; });
+        agents_idx.modify(agent, name(), [&](auto& a) { a.set_balance(a.balance + actual_amount); });
     }
     else {
         auto share = std::abs(actual_amount);
         agents_idx.modify(agent, name(), [&](auto& a) {
-            a.balance = actual_amount;
+            a.set_balance(actual_amount);
             a.shares_sum = share;
             a.own_share = share;
         });

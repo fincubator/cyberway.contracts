@@ -302,12 +302,12 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_stake_tester) try {
     deploy_sys_contracts();
     issuer_delegate_authority(govern_account_name);
     
-    stake.register_candidate(_alice, token._symbol.to_symbol_code());
     stake.register_candidate(_bob, token._symbol.to_symbol_code());
+    stake.register_candidate(_alice, token._symbol.to_symbol_code());
     produce_block();
     auto lpu = head_block_time();
-    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.updatefunds(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_alice, token._symbol.to_symbol_code()));
     produce_block();
     auto cur_block_num = 4;
     auto sumup_to_staked = cfg::sum_up_interval / cfg::reward_for_staked_interval;
@@ -327,12 +327,12 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_stake_tester) try {
     auto reward = ((blocks_before_sum_up + 1) * cfg::block_reward / 2) + (cfg::reward_of_elected * sumup_to_staked);
     BOOST_TEST_MESSAGE("reward = " << reward);
  
-    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol),
-        stake.make_agent(_alice, token._symbol, 0, lpu, reward, 0, reward, reward));
     BOOST_CHECK_EQUAL(stake.get_agent(_bob, token._symbol),
         stake.make_agent(_bob, token._symbol, 0, lpu, reward, 0, reward, reward));
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol),
+        stake.make_agent(_alice, token._symbol, 0, lpu, reward, 0, reward, reward));
     
-    std::vector<account_name> ignored_producers = {_alice};
+    std::vector<account_name> ignored_producers = {_bob};
     push_action(govern_account_name, N(setignored), govern_account_name, fc::mutable_variant_object()("ignored_producers", ignored_producers));
     for (int i = 0; i < cfg::sum_up_interval - 5; i++) {
         produce_block();
@@ -350,10 +350,10 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_stake_tester) try {
     auto reward2 = ((cfg::sum_up_interval - 2) * cfg::block_reward) + (cfg::reward_of_elected * sumup_to_staked);
     BOOST_TEST_MESSAGE("reward2 = " << reward2);
     
-    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol),
-        stake.make_agent(_alice, token._symbol, 0, lpu, 0, 0, reward, reward));
     BOOST_CHECK_EQUAL(stake.get_agent(_bob, token._symbol),
-        stake.make_agent(_bob, token._symbol, 0, lpu, reward + reward2, 0, reward, reward));
+        stake.make_agent(_bob, token._symbol, 0, lpu, 0, 0, reward, reward));
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol),
+        stake.make_agent(_alice, token._symbol, 0, lpu, reward + reward2, 0, reward, reward));
 
     produce_block();
 } FC_LOG_AND_RETHROW()
@@ -365,12 +365,12 @@ BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_stake_tester) try {
     issuer_delegate_authority(govern_account_name);
     produce_block();
     uint32_t block_num = 0;
-    stake.register_candidate(_alice, token._symbol.to_symbol_code());
-    block_num = produce_blocks_to_proposal(block_num, 1);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group({_alice}));
     stake.register_candidate(_bob, token._symbol.to_symbol_code());
     block_num = produce_blocks_to_proposal(block_num, 1);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group({_alice, _bob}));
+    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group({_bob}));
+    stake.register_candidate(_alice, token._symbol.to_symbol_code());
+    block_num = produce_blocks_to_proposal(block_num, 1);
+    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group({_bob, _alice}));
     
     std::vector<account_name> producers;
     std::vector<account_name> crowd_of_bps;
@@ -388,22 +388,22 @@ BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_stake_tester) try {
     crowd_and_bob.emplace_back(_bob);
 
     block_num = produce_blocks_to_proposal(block_num, 2);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_bob));
+    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
     
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, asset(3, token._symbol), ""));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 1));
     
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, asset(1, token._symbol)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _alice, asset(1, token._symbol)));
-    
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
-    
-    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, asset(2, token._symbol)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, asset(2, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, asset(1, token._symbol)));
     
     block_num = produce_blocks_to_proposal(block_num, 21);
     BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_bob));
+    
+    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, asset(2, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _alice, asset(2, token._symbol)));
+    
+    block_num = produce_blocks_to_proposal(block_num, 21);
+    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
     
     stake.register_candidate(_whale, token._symbol.to_symbol_code());
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(100500, token._symbol), ""));
@@ -420,16 +420,16 @@ BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_stake_tester) try {
     auto crowd_and_user = crowd_of_bps;
     crowd_and_user.emplace_back(user_name(0));
     
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
-    block_num = produce_blocks_to_proposal(block_num, 21);
     BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_bob));
+    block_num = produce_blocks_to_proposal(block_num, 21);
+    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
     block_num = produce_blocks_to_proposal(block_num, 21);
     BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_user));
     
     block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
-    block_num = produce_blocks_to_proposal(block_num, 21);
     BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_bob));
+    block_num = produce_blocks_to_proposal(block_num, 21);
+    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
     
 } FC_LOG_AND_RETHROW()
 

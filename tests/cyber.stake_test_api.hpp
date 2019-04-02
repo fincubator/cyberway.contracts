@@ -166,7 +166,7 @@ public:
             ("token_code", token_symbol.to_symbol_code())
             ("account", account)
             ("proxy_level", proxy_level)
-            ("ultimate", !proxy_level)
+            ("votes", proxy_level ? -1 : balance)
             ("last_proxied_update", last_proxied_update)
             ("balance", balance)
             ("proxied", proxied)

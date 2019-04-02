@@ -79,7 +79,8 @@ struct structures {
         std::vector<uint8_t> max_proxies;
         int64_t frame_length;
         int64_t payout_step_lenght;
-        uint16_t payout_steps_num;  
+        uint16_t payout_steps_num;
+        int64_t min_own_staked_for_election = 0;
         uint64_t primary_key()const { return id; }
     };
  
@@ -143,11 +144,14 @@ struct structures {
     void change_balance(name account, asset quantity);
     void update_stats(const structures::stat& stat_arg, name payer = name());
     
+    void check_staking(symbol_code token_code) const {
+        params params_table(table_owner, table_owner.value);
+        params_table.get(token_code.raw(), "no staking for token");
+    };
+    
     template<typename Lambda>
     void modify_agent(name account, symbol_code token_code, Lambda f) {
         require_auth(account);
-        params params_table(table_owner, table_owner.value);
-        const auto& param = params_table.get(token_code.raw(), "no staking for token");
         agents agents_table(table_owner, table_owner.value);
         auto agents_idx = agents_table.get_index<"bykey"_n>();
         auto agent = get_agent_itr(token_code, agents_idx, account);
@@ -177,7 +181,8 @@ public:
     using contract::contract;
 
     [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-        int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num);
+        int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num,
+        int64_t min_own_staked_for_election);
         
     [[eosio::action]] void enable(symbol token_symbol);
 

@@ -35,6 +35,15 @@ void govern::onblock(name producer) {
     if (s.block_num % config::reward_for_staked_interval == 0) {
         update_and_reward_producers(producers_table);
     }
+    if (s.block_num % config::check_missing_blocks_interval == 0) {
+        for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
+            if (prod_itr->is_active()) {
+                check_missing_blocks(producers_table, prod_itr, s.block_num);
+                //since last_block_produced does not change in check_missing_blocks,
+                //the penalty for each missed block increases over time for sleeping producers.
+            }
+        }
+    }
     
     auto prod_itr = producers_table.end();
     if (producer != config::internal_name) {
@@ -199,7 +208,6 @@ void govern::check_missing_blocks(producers& producers_table, producers::const_i
     eosio_assert(block_num > last_block, "SYSTEM: incorrect block_num val");
     eosio_assert(state.get().active_producers_num, "SYSTEM: incorrect active_producers_num val");
     
-    //TODO:? producer_repetitions
     auto period = state.get().active_producers_num;
     auto max_diff = (period * 2) - 1;
     auto diff = block_num - last_block;

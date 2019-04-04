@@ -37,7 +37,7 @@ void govern::onblock(name producer) {
     }
     if (s.block_num % config::check_missing_blocks_interval == 0) {
         for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
-            if (prod_itr->is_active()) {
+            if (prod_itr->is_active() && prod_itr->account != producer) {
                 check_missing_blocks(producers_table, prod_itr, s.block_num);
                 //since last_block_produced does not change in check_missing_blocks,
                 //the penalty for each missed block increases over time for sleeping producers.

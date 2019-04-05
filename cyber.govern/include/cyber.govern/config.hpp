@@ -7,6 +7,7 @@ static const auto issuer_name = internal_name;
     
 static const auto sum_up_interval = 701;
 static const auto reward_for_staked_interval = 113;
+static const auto check_missing_blocks_interval = 199;
 
 static const auto balances_update_window = sum_up_interval * block_interval_ms / 1000;
 

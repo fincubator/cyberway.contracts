@@ -33,7 +33,7 @@ struct structures {
         name account;
         
         uint8_t proxy_level;
-        bool ultimate;
+        int64_t votes;
         time_point_sec last_proxied_update;
         int64_t balance = 0;// aka unproxied funds
         int64_t proxied = 0;// proxed funds
@@ -46,9 +46,15 @@ struct structures {
         uint64_t primary_key()const { return id; }
         using key_t = std::tuple<symbol_code, name>;
         key_t by_key()const { return std::make_tuple(token_code, account); }
-        using ultimate_key_t = std::tuple<symbol_code, bool, name>;
-        ultimate_key_t by_ultimate()const { return std::make_tuple(token_code, ultimate, account); }
+        using votes_key_t = std::tuple<symbol_code, int64_t, name>;
+        votes_key_t by_votes()const { return std::make_tuple(token_code, votes, account); }
         int64_t get_total_funds()const { return balance + proxied; }
+        void set_balance(int64_t arg) {
+            balance = arg;
+            if (!proxy_level) {
+                votes = balance;
+            }
+        };
      };
  
     struct [[eosio::table]] grant {
@@ -73,7 +79,8 @@ struct structures {
         std::vector<uint8_t> max_proxies;
         int64_t frame_length;
         int64_t payout_step_lenght;
-        uint16_t payout_steps_num;  
+        uint16_t payout_steps_num;
+        int64_t min_own_staked_for_election = 0;
         uint64_t primary_key()const { return id; }
     };
  
@@ -101,8 +108,8 @@ struct structures {
 
     using agent_id_index = eosio::indexed_by<"agentid"_n, eosio::const_mem_fun<structures::agent, uint64_t, &structures::agent::primary_key> >;
     using agent_key_index = eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::agent, structures::agent::key_t, &structures::agent::by_key> >;
-    using agent_ultimate_index = eosio::indexed_by<"byultimate"_n, eosio::const_mem_fun<structures::agent, structures::agent::ultimate_key_t, &structures::agent::by_ultimate> >;
-    using agents = eosio::multi_index<"stake.agent"_n, structures::agent, agent_id_index, agent_key_index, agent_ultimate_index>;
+    using agent_votes_index = eosio::indexed_by<"byvotes"_n, eosio::const_mem_fun<structures::agent, structures::agent::votes_key_t, &structures::agent::by_votes> >;
+    using agents = eosio::multi_index<"stake.agent"_n, structures::agent, agent_id_index, agent_key_index, agent_votes_index>;
     using agents_idx_t = decltype(agents(table_owner, table_owner.value).get_index<"bykey"_n>());
     
     using grant_id_index = eosio::indexed_by<"grantid"_n, eosio::const_mem_fun<structures::grant, uint64_t, &structures::grant::primary_key> >;
@@ -137,11 +144,14 @@ struct structures {
     void change_balance(name account, asset quantity);
     void update_stats(const structures::stat& stat_arg, name payer = name());
     
+    void check_staking(symbol_code token_code) const {
+        params params_table(table_owner, table_owner.value);
+        params_table.get(token_code.raw(), "no staking for token");
+    };
+    
     template<typename Lambda>
     void modify_agent(name account, symbol_code token_code, Lambda f) {
         require_auth(account);
-        params params_table(table_owner, table_owner.value);
-        const auto& param = params_table.get(token_code.raw(), "no staking for token");
         agents agents_table(table_owner, table_owner.value);
         auto agents_idx = agents_table.get_index<"bykey"_n>();
         auto agent = get_agent_itr(token_code, agents_idx, account);
@@ -155,39 +165,24 @@ public:
         params params_table(table_owner, table_owner.value);
         const auto& param = params_table.get(token_code.raw(), "no staking for token");
         agents agents_table(table_owner, table_owner.value);
-        auto agents_idx = agents_table.get_index<"byultimate"_n>();
-        
-        struct agent_info {
-            name account;
-            mutable public_key signing_key;
-            mutable int64_t balance = 0;
-        };
-        std::vector<agent_info> agents_vector;
-        auto agent_itr = agents_idx.lower_bound(std::make_tuple(token_code, true, name()));
-        while ((agent_itr != agents_idx.end()) && (agent_itr->token_code   == token_code) && agent_itr->ultimate) {
-            agents_vector.emplace_back(agent_info{agent_itr->account, agent_itr->signing_key, agent_itr->balance});
-            ++agent_itr;
-        }
-        
-        size_t ret_size = std::min(static_cast<size_t>(n), agents_vector.size());
-        auto agents_mid = agents_vector.begin() + ret_size;
-        std::partial_sort(agents_vector.begin(), agents_mid, agents_vector.end(), [](const agent_info& lhs, const agent_info& rhs) {
-            return std::tie(lhs.balance, lhs.account) > std::tie(rhs.balance, rhs.account);
-        });
+        auto agents_idx = agents_table.get_index<"byvotes"_n>();
         
         std::vector<std::pair<name, public_key> > ret;
-        ret.reserve(ret_size);
-
-        for (auto i = agents_vector.begin(); i != agents_mid; ++i)
-            ret.emplace_back(std::make_pair(i->account, i->signing_key));
-
+        size_t i = 0;
+        auto agent_itr = agents_idx.lower_bound(std::make_tuple(token_code, std::numeric_limits<int64_t>::max(), name()));
+        while ((agent_itr != agents_idx.end()) && (agent_itr->token_code == token_code) && (agent_itr->votes >= 0) && (i < n)) {
+            ret.emplace_back(std::make_pair(agent_itr->account, agent_itr->signing_key));
+            ++agent_itr;
+            ++i;
+        }
         return ret;
     }
 
     using contract::contract;
 
     [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-        int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num);
+        int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num,
+        int64_t min_own_staked_for_election);
         
     [[eosio::action]] void enable(symbol token_symbol);
 

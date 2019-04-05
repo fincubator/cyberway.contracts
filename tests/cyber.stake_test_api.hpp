@@ -13,13 +13,15 @@ public:
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol,
-            std::vector<uint8_t> max_proxies, int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num) {
+            std::vector<uint8_t> max_proxies, int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num,
+            int64_t min_own_staked_for_election = 0) {
         return push(N(create), issuer, args()
             ("token_symbol", token_symbol)
             ("max_proxies", max_proxies)
             ("frame_length", frame_length)
             ("payout_step_lenght", payout_step_lenght)
             ("payout_steps_num", payout_steps_num)
+            ("min_own_staked_for_election", min_own_staked_for_election)
         );
     }
     
@@ -166,7 +168,7 @@ public:
             ("token_code", token_symbol.to_symbol_code())
             ("account", account)
             ("proxy_level", proxy_level)
-            ("ultimate", !proxy_level)
+            ("votes", proxy_level ? -1 : balance)
             ("last_proxied_update", last_proxied_update)
             ("balance", balance)
             ("proxied", proxied)

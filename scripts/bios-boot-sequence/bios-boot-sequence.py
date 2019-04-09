@@ -17,14 +17,14 @@ unlockTimeout = 999999999
 fastUnstakeSystem = './fast.refund/cyber.system/cyber.system.wasm'
 
 systemAccounts = [
-    # account inGenesis
-    ('cyber.bpay', False),
-    ('cyber.names', False),
-    ('cyber.ram', False),
-    ('cyber.ramfee', False),
-    ('cyber.saving', False),
-    ('cyber.token', True),
-    ('cyber.vpay', False),
+    # account          inGenesis
+    ('cyber.bpay',     False),
+    ('cyber.names',    False),
+    ('cyber.ram',      False),
+    ('cyber.ramfee',   False),
+    ('cyber.saving',   False),
+    ('cyber.token',    True),
+    ('cyber.vpay',     False),
 ]
 
 def jsonArg(a):
@@ -313,7 +313,7 @@ def stepInstallSystemContracts():
     updateAuthority('cyber', 'reward', 'active', [args.public_key], [])
     updateAuthority('cyber', 'amerce', 'active', [args.public_key], [])
     retry(args.cleos + 'set contract cyber.domain ' + args.contracts_dir + 'cyber.domain/')
-    retry(args.cleos + 'set contract cyber.token ' + args.contracts_dir + 'cyber.token/')
+    #retry(args.cleos + 'set contract cyber.token ' + args.contracts_dir + 'cyber.token/')
     retry(args.cleos + 'set contract cyber.msig ' + args.contracts_dir + 'cyber.msig/')
     retry(args.cleos + 'set contract cyber.stake ' + args.contracts_dir + 'cyber.stake/')
     retry(args.cleos + 'set contract cyber.govern ' + args.contracts_dir + 'cyber.govern/')
@@ -324,11 +324,12 @@ def stepCreateTokens():
     retry(args.cleos + 'push action cyber.token issue \'["cyber", "%s", "memo"]\' -p cyber' % intToCurrency(totalAllocation))
     sleep(1)
 def stepConfigureSystem():
-    retry(args.cleos + 'push action cyber.stake create \'["4,%s", [["CPU",43200,12],["NET",43200,12],["RAM",43200,12]], [30, 10, 3, 1], 1800, 43200, 12]\' -p cyber' % (args.symbol))
+    retry(args.cleos + 'push action cyber.stake create \'["4,%s", [30, 10, 3, 1], 1800, 43200, 12, 0]\' -p cyber' % (args.symbol))
     retry(args.cleos + 'push action cyber.stake setproxylvl \'{"account":"cyber", "token_code":"%s", "purpose_code":"", "level":0}\' -p cyber' % (args.symbol))
+    #retry(args.cleos + 'push action cyber.stake setminstaked \'{"account":"cyber", "token_code":"%s", "min_own_staked": 0}\' -p cyber' % (args.symbol))
     # Stake half of total supply for guaranteed election to the block producers
     retry(args.cleos + 'push action cyber.token issue \'["cyber", "5000000000.0000 %s", ""]\' -p cyber' % (args.symbol))
-    retry(args.cleos + 'push action cyber.token transfer \'["cyber", "cyber.stake", "5000000000.0000 %s", "RAM"]\' -p cyber' % (args.symbol))
+    retry(args.cleos + 'push action cyber.token transfer \'["cyber", "cyber.stake", "5000000000.0000 %s", ""]\' -p cyber' % (args.symbol))
     retry(args.cleos + 'push action cyber.stake setkey \'{"account":"cyber","token_code":"%s","signing_key":"GLS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV"}\' -p cyber' % (args.symbol))
     sleep(1)
 def stepCreateStakedAccounts():

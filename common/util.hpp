@@ -21,4 +21,10 @@ static int64_t safe_pct(int64_t arg, int64_t total) {
     return safe_prop(arg, total,  config::_100percent);
 }
 
+static int64_t mul_cut(int64_t a, int64_t b) {
+    static constexpr int128_t max_ret128 = std::numeric_limits<int64_t>::max();
+    auto ret128 = static_cast<int128_t>(a) * b;
+    return static_cast<int64_t>(std::min(max_ret128, ret128));
+}
+
 } // commun

@@ -10,7 +10,9 @@
                 { "type": "uint16",         "name": "last_producers_num" },
                 { "type": "uint16",         "name": "active_producers_num" },
                 { "type": "name[]",         "name": "pending_active_producers" },
-                { "type": "name[]",         "name": "ignored_producers" }
+                { "type": "name[]",         "name": "ignored_producers" },
+                { "type": "int64",         "name": "target_emission_per_block" },
+                { "type": "int64",         "name": "funds" }
             ]
         },{
             "name": "producer_struct",

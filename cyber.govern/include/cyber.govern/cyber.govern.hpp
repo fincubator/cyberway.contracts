@@ -16,6 +16,8 @@ struct structures {
         uint16_t active_producers_num = 0;
         std::vector<name> pending_active_producers;
         std::vector<name> ignored_producers; //for testing
+        int64_t target_emission_per_block = 0;
+        int64_t funds = 0;
     };
 
     struct [[eosio::table]] producer {
@@ -40,10 +42,12 @@ struct structures {
     
     change_of_participants get_change_of_producers(producers& producers_table, std::vector<name> new_producers, bool active_only);
     void shrink_to_active_producers(producers& producers_table, std::vector<std::pair<name, public_key> >& arg);
-    void update_and_reward_producers(producers& producers_table);
+    void update_and_reward_producers(producers& producers_table, structures::state_info& s);
+    void reward_workers(structures::state_info& s);
     void check_missing_blocks(producers& producers_table, producers::const_iterator prod_itr, uint32_t block_num);
     void sum_up(producers& producers_table);
     bool maybe_promote_active_producers(const structures::state_info& s);
+    int64_t get_target_emission_per_block(int64_t supply) const;
     
 public:
     using contract::contract;

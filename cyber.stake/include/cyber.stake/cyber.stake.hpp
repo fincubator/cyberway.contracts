@@ -144,7 +144,7 @@ struct structures {
     void change_balance(name account, asset quantity);
     void update_stats(const structures::stat& stat_arg, name payer = name());
     
-    void check_staking(symbol_code token_code) const {
+    static inline void check_staking(symbol_code token_code) {
         params params_table(table_owner, table_owner.value);
         params_table.get(token_code.raw(), "no staking for token");
     };
@@ -162,11 +162,10 @@ struct structures {
 public:
 
     static inline std::vector<std::pair<name, public_key> > get_top(uint16_t n, symbol_code token_code) {
-        params params_table(table_owner, table_owner.value);
-        const auto& param = params_table.get(token_code.raw(), "no staking for token");
+        check_staking(token_code);
         agents agents_table(table_owner, table_owner.value);
         auto agents_idx = agents_table.get_index<"byvotes"_n>();
-        
+
         std::vector<std::pair<name, public_key> > ret;
         size_t i = 0;
         auto agent_itr = agents_idx.lower_bound(std::make_tuple(token_code, std::numeric_limits<int64_t>::max(), name()));
@@ -174,6 +173,19 @@ public:
             ret.emplace_back(std::make_pair(agent_itr->account, agent_itr->signing_key));
             ++agent_itr;
             ++i;
+        }
+        return ret;
+    }
+    
+    static inline int64_t get_votes_sum(symbol_code token_code) {
+        check_staking(token_code);
+        agents agents_table(table_owner, table_owner.value);
+        auto agents_idx = agents_table.get_index<"byvotes"_n>();
+        int64_t ret = 0;
+        auto agent_itr = agents_idx.lower_bound(std::make_tuple(token_code, std::numeric_limits<int64_t>::max(), name()));
+        while ((agent_itr != agents_idx.end()) && (agent_itr->token_code == token_code) && (agent_itr->votes >= 0)) {
+            ret += agent_itr->votes;
+            ++agent_itr;
         }
         return ret;
     }

@@ -22,6 +22,7 @@ namespace cyber { namespace config {
 static const auto token_name = "cyber.token"_n;
 static const auto stake_name = "cyber.stake"_n;
 static const auto govern_name = "cyber.govern"_n;
+static const auto worker_name = "cyber.worker"_n;
 static const auto internal_name = "cyber"_n;
 
 // permissions

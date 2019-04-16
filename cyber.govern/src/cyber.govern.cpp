@@ -1,7 +1,9 @@
 #include <cyber.govern/cyber.govern.hpp>
 #include <eosiolib/privileged.hpp> 
 #include <cyber.stake/cyber.stake.hpp>
+#include <cyber.token/cyber.token.hpp>
 #include <cyber.govern/config.hpp>
+#include <common/util.hpp>
 
 using namespace cyber::config;
 
@@ -26,14 +28,27 @@ void govern::onblock(name producer) {
     }
     s.block_num++;
     
-    eosio::print("govern::onblock: producer = ", producer, "; block = ", s.block_num, "\n");
-    
+    int64_t block_reward = 0;
+    if (producer != config::internal_name) {
+        auto supply     = eosio::token::get_supply    (config::token_name, system_token.code()).amount;
+        auto max_supply = eosio::token::get_max_supply(config::token_name, system_token.code()).amount;
+        eosio_assert(max_supply >= supply, "SYSTEM: incorrect supply");
+        
+        if ((s.block_num % config::update_emission_per_block_interval == 0) || !s.target_emission_per_block) {
+            s.target_emission_per_block = get_target_emission_per_block(supply);
+        }
+        auto cur_block_emission = std::min(max_supply - supply, s.target_emission_per_block);
+        block_reward = safe_pct(cur_block_emission, config::block_reward_pct);
+        s.funds += cur_block_emission - block_reward;
+    }
+        
     producers producers_table(_self, _self.value);
     if (s.block_num % config::sum_up_interval == 0) {
         sum_up(producers_table);
     }
-    if (s.block_num % config::reward_for_staked_interval == 0) {
-        update_and_reward_producers(producers_table);
+    if (s.block_num % config::reward_from_funds_interval == 0) {
+        update_and_reward_producers(producers_table, s);
+        reward_workers(s);
     }
     if (s.block_num % config::check_missing_blocks_interval == 0) {
         for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
@@ -57,9 +72,10 @@ void govern::onblock(name producer) {
         s.pending_active_producers.clear();
     }
     
-    if (prod_itr != producers_table.end()) {
+    if (producer != config::internal_name) {
+        eosio_assert(prod_itr != producers_table.end(), "SYSTEM: prod_itr == end");
         producers_table.modify(prod_itr, name(), [&](auto& a) {
-            a.confirmed_balance += a.pending_balance + config::block_reward;
+            a.confirmed_balance += a.pending_balance + block_reward;
             a.pending_balance = 0;
             a.last_block_produced = s.block_num;
         });
@@ -157,9 +173,15 @@ void govern::shrink_to_active_producers(producers& producers_table, std::vector<
     }
 }
 
-void govern::update_and_reward_producers(producers& producers_table) {
-    auto state = state_singleton(_self, _self.value);
-    auto s = state.get();
+void govern::reward_workers(structures::state_info& s) {
+    if (s.funds) {
+        INLINE_ACTION_SENDER(eosio::token, issue)(config::token_name, {config::issuer_name, config::active_name}, 
+            {config::worker_name, asset(s.funds, system_token), ""});
+        s.funds = 0;
+    }
+}
+
+void govern::update_and_reward_producers(producers& producers_table, structures::state_info& s) {
     auto new_producers = stake::get_top(config::elected_producers_num, system_token.code());
     eosio_assert(new_producers.size() <= std::numeric_limits<uint16_t>::max(), "SYSTEM: incorrect producers num");
     if (new_producers.size() < s.last_producers_num)
@@ -193,11 +215,28 @@ void govern::update_and_reward_producers(producers& producers_table) {
         producers_table.modify(prod_itr, name(), [&](auto& a) { a.elected = false; });
     }
     
+    uint16_t actual_elected_num = 0;
     for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
-        producers_table.modify(prod_itr, name(), [&](auto& a) { a.pending_balance += config::reward_of_elected; });
+        if (prod_itr->elected) {
+            actual_elected_num++;
+        }
     }
-    state.set(s, _self);
-    
+    if (actual_elected_num) {
+        auto reward_of_elected = safe_pct(s.funds, config::_100percent - config::workers_reward_pct);
+        auto even = reward_of_elected / actual_elected_num;
+        auto change = reward_of_elected - (even * actual_elected_num);
+        auto lucky_one = s.block_num % actual_elected_num;
+        auto i = 0;
+        for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
+            if (prod_itr->elected) {
+                producers_table.modify(prod_itr, name(), [&](auto& a) { 
+                    a.pending_balance += even + (i == lucky_one ? change : 0);
+                });
+                i++;
+            }
+        }
+        s.funds -= reward_of_elected;
+    }
 }
 
 void govern::check_missing_blocks(producers& producers_table, producers::const_iterator prod_itr, uint32_t block_num) {
@@ -211,12 +250,13 @@ void govern::check_missing_blocks(producers& producers_table, producers::const_i
     auto period = state.get().active_producers_num;
     auto max_diff = (period * 2) - 1;
     auto diff = block_num - last_block;
-    auto missing_blocks_num = diff > max_diff ? ((diff - max_diff) / period) + 1 : 0;
+    auto missing_blocks_num = diff > max_diff ? ((diff - max_diff) / period) + 1 : 0; //can we give a more accurate estimate?
     
     if (missing_blocks_num > config::allowable_number_of_missing_blocks) {
+        int64_t penalty = mul_cut(state.get().target_emission_per_block * config::missing_block_factor, missing_blocks_num);
         producers_table.modify(prod_itr, name(), [&](auto& a) {
             a.pending_balance = std::min(a.pending_balance, static_cast<decltype(a.pending_balance)>(0));
-            a.confirmed_balance -= missing_blocks_num * config::missing_block_amerce;
+            a.confirmed_balance -= penalty;
         });
     }
 }
@@ -240,6 +280,18 @@ void govern::sum_up(producers& producers_table) {
             prod_itr = producers_table.erase(prod_itr);
         }
     }
+}
+
+int64_t govern::get_target_emission_per_block(int64_t supply) const {
+    auto votes_sum = cyber::stake::get_votes_sum(system_token.code());
+    eosio_assert(votes_sum <= supply, "SYSTEM: incorrect votes_sum val");
+    auto not_involved_pct = static_cast<decltype(config::_100percent)>(safe_prop(config::_100percent, supply - votes_sum, supply));
+    auto arg = std::min(std::max(not_involved_pct, config::emission_min_arg), config::emission_max_arg);
+    arg -= config::emission_min_arg;
+    arg = safe_prop(config::_100percent, arg, config::emission_max_arg - config::emission_min_arg);
+    auto emission_per_year_pct = (((arg * config::emission_factor) / config::_100percent) + config::emission_addition);  
+    int64_t emission_per_year = safe_pct(emission_per_year_pct, supply);
+    return emission_per_year / config::blocks_per_year;
 }
 
 }

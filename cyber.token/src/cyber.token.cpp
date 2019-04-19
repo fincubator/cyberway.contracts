@@ -135,9 +135,12 @@ void token::do_transfer( name  from,
     auto payer = has_auth( to ) ? to : from;
 
     sub_balance( from, quantity );
-    if (payment)
-        add_payment( to, quantity, payer );
-    else {
+    if (payment) {
+        accounts accounts_tbl(_self, to.value);
+        auto receiver = (accounts_tbl.find(sym.raw()) == accounts_tbl.end()) ? from : to;
+
+        add_payment( receiver, quantity, payer );
+    } else {
         require_recipient( from );
         require_recipient( to );
 

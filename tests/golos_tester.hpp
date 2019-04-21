@@ -72,6 +72,7 @@ public:
     fc::variant get_chaindb_struct(name code, uint64_t scope, name tbl, uint64_t id, const std::string& n) const;
     fc::variant get_chaindb_singleton(name code, uint64_t scope, name tbl, const std::string& n) const;
     std::vector<fc::variant> get_all_chaindb_rows(name code, uint64_t scope, name tbl, bool strict) const;
+    signed_block_ptr wait_block(const uint32_t n);
 };
 
 

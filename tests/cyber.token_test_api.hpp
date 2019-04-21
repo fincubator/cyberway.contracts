@@ -84,6 +84,9 @@ struct cyber_token_api: base_contract_api {
     asset make_asset(double x = 0) const {
         return asset(to_shares(x), _symbol);
     }
+    asset from_amount(int64_t x) const {
+        return asset(x, _symbol);
+    }
     string asset_str(double x = 0) {
         return make_asset(x).to_string();
     }

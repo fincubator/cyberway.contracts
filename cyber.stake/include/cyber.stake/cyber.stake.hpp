@@ -64,7 +64,6 @@ struct structures {
         name agent_name;
         int16_t pct = 0;
         int64_t share = 0;
-        int64_t granted = 0;
         int16_t break_fee = config::_100percent;
         int64_t break_min_own_staked = 0;
         
@@ -78,7 +77,7 @@ struct structures {
         symbol token_symbol;
         std::vector<uint8_t> max_proxies;
         int64_t frame_length;
-        int64_t payout_step_lenght;
+        int64_t payout_step_length;
         uint16_t payout_steps_num;
         int64_t min_own_staked_for_election = 0;
         uint64_t primary_key()const { return id; }
@@ -127,11 +126,11 @@ struct structures {
     using payout_acc_index = eosio::indexed_by<"payoutacc"_n, eosio::const_mem_fun<structures::payout, structures::payout::by_account_t, &structures::payout::by_account> >;
     using payouts = eosio::multi_index<"payout"_n, structures::payout, payout_id_index, payout_acc_index>;
     
-    void update_stake_proxied(symbol_code token_code, name agent_name, int64_t frame_length, bool force) {
-        ::update_stake_proxied(token_code.raw(), agent_name.value, frame_length, static_cast<int>(force));
+    void update_stake_proxied(symbol_code token_code, name agent_name) {
+        ::update_stake_proxied(token_code.raw(), agent_name.value, int64_t(1), static_cast<int>(true));
     }
     
-    void send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_lenght, symbol sym);
+    void send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode = false);
     void update_payout(name account, asset quantity, bool claim_mode = false);
 
     //return: share
@@ -139,7 +138,7 @@ struct structures {
     
     agents_idx_t::const_iterator get_agent_itr(symbol_code token_code, agents_idx_t& agents_idx, name agent_name, int16_t proxy_level_for_emplaced = -1, agents* agents_table = nullptr, bool* emplaced = nullptr);
     void add_proxy(symbol_code token_code, grants& grants_table, const structures::agent& grantor_as_agent, const structures::agent& agent, 
-        int16_t pct, int64_t share, int64_t granted, int16_t break_fee = -1, int64_t break_min_own_staked = -1);
+        int16_t pct, int64_t share, int16_t break_fee = -1, int64_t break_min_own_staked = -1);
 
     void change_balance(name account, asset quantity);
     void update_stats(const structures::stat& stat_arg, name payer = name());
@@ -183,7 +182,7 @@ public:
         auto agents_idx = agents_table.get_index<"byvotes"_n>();
         int64_t ret = 0;
         auto agent_itr = agents_idx.lower_bound(std::make_tuple(token_code, std::numeric_limits<int64_t>::max(), name()));
-        while ((agent_itr != agents_idx.end()) && (agent_itr->token_code == token_code) && (agent_itr->votes >= 0)) {
+        while ((agent_itr != agents_idx.end()) && (agent_itr->token_code == token_code) && (agent_itr->votes > 0)) {
             ret += agent_itr->votes;
             ++agent_itr;
         }
@@ -193,7 +192,7 @@ public:
     using contract::contract;
 
     [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-        int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num,
+        int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
         int64_t min_own_staked_for_election);
         
     [[eosio::action]] void enable(symbol token_symbol);
@@ -216,8 +215,6 @@ public:
     [[eosio::action]] void setkey(name account, symbol_code token_code, public_key signing_key);
     
     [[eosio::action]] void updatefunds(name account, symbol_code token_code);
-        
-    [[eosio::action]] void amerce(name account, asset quantity);
 
     [[eosio::action]] void reward(name account, asset quantity);
 };

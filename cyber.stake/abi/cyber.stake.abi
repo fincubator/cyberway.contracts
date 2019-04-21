@@ -19,7 +19,7 @@
                 { "type": "symbol",                 "name": "token_symbol" },
                 { "type": "uint8[]",                "name": "max_proxies"  },
                 { "type": "int64",                  "name": "frame_length"  },
-                { "type": "int64",                  "name": "payout_step_lenght"  },
+                { "type": "int64",                  "name": "payout_step_length"  },
                 { "type": "uint16",                 "name": "payout_steps_num"  },
                 { "type": "int64",                  "name": "min_own_staked_for_election"  }
             ]
@@ -155,10 +155,6 @@
         },{
             "name": "updatefunds",
             "type": "updatefunds_args",
-            "ricardian_contract": ""
-        },{
-            "name": "amerce",
-            "type": "withdraw_args",
             "ricardian_contract": ""
         },{
             "name": "reward",

@@ -174,4 +174,13 @@ void golos_tester::delegate_authority(account_name from, std::vector<account_nam
     link_authority(from, code, req, type);
 }
 
+signed_block_ptr golos_tester::wait_block(const uint32_t n) {
+    BOOST_TEST_REQUIRE(control->head_block_num() <= n);
+    auto b = control->head_block_state()->block;
+    while (control->head_block_num() < n) {
+        b = produce_block();
+    }
+    return b;
+}
+
 }} // eosio::tesing

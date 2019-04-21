@@ -23,7 +23,6 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
     eosio_assert((own_funds >= agent->min_own_staked) || refill, "insufficient agent funds");
     if(amount == 0)
         return 0;
-
     auto remaining_amount = amount;
     auto grant_itr = grants_idx.lower_bound(
         std::make_tuple(token_code, agent_name, name()));
@@ -32,16 +31,14 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
         remaining_amount -= to_delegate;
         eosio_assert(remaining_amount >= 0, "SYSTEM: incorrect remaining_amount");
         auto delegated = delegate_traversal(token_code, agents_idx, grants_idx, grant_itr->agent_name, to_delegate, true);
-        grants_idx.modify(grant_itr, name(), [&](auto& g) {
-            g.share += delegated;
-            g.granted += to_delegate;
-        });
+        grants_idx.modify(grant_itr, name(), [&](auto& g) { g.share += delegated; });
         ++grant_itr;
     }
     eosio_assert(remaining_amount <= amount, "SYSTEM: incorrect remaining_amount");
     
     auto ret = total_funds && agent->shares_sum ? safe_prop(agent->shares_sum, amount, total_funds) : amount;
-    
+    eosio_assert(std::numeric_limits<int64_t>::max() - agent->shares_sum >= ret, "shares_sum overflow");
+
     agents_idx.modify(agent, name(), [&](auto& a) {
         a.set_balance(a.balance + remaining_amount);
         a.proxied += amount - remaining_amount;
@@ -52,7 +49,7 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
 }
 
 void stake::add_proxy(symbol_code token_code, grants& grants_table, const structures::agent& grantor_as_agent, const structures::agent& agent, 
-        int16_t pct, int64_t share, int64_t granted, int16_t break_fee, int64_t break_min_own_staked) {
+        int16_t pct, int64_t share, int16_t break_fee, int64_t break_min_own_staked) {
 
     auto now = ::now();
     eosio_assert(agent.last_proxied_update == time_point_sec(now), 
@@ -69,7 +66,6 @@ void stake::add_proxy(symbol_code token_code, grants& grants_table, const struct
         .agent_name = agent.account,
         .pct = pct,
         .share = share,
-        .granted = granted,
         .break_fee = break_fee < 0 ? agent.fee : break_fee,
         .break_min_own_staked = break_min_own_staked < 0 ? agent.min_own_staked : break_min_own_staked
     };});
@@ -82,13 +78,13 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
      auto token_code = quantity.symbol.code();
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
     
-    update_stake_proxied(token_code, agent_name, param.frame_length, true);
-    
+    update_stake_proxied(token_code, agent_name);
+     
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     
     auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);   
-    eosio_assert(quantity.amount <= grantor_as_agent->balance, "insufficient balance");
+    eosio_assert(quantity.amount <= grantor_as_agent->balance, "insufficient funds");
     auto agent = get_agent_itr(token_code, agents_idx, agent_name);
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
@@ -99,10 +95,7 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
     while ((grant_itr != grants_idx.end()) && (grant_itr->token_code   == token_code) && (grant_itr->grantor_name == grantor_name)) {
         ++proxies_num;
         if (grant_itr->agent_name == agent_name) {
-            grants_idx.modify(grant_itr, name(), [&](auto& g) {
-                g.share += delegated;
-                g.granted += quantity.amount; 
-            });
+            grants_idx.modify(grant_itr, name(), [&](auto& g) { g.share += delegated; });
             delegated = 0;
         }
         ++grant_itr;
@@ -110,9 +103,9 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
     
     if (delegated) {
         eosio_assert(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
-        add_proxy(token_code, grants_table, *grantor_as_agent, *agent, 0, delegated, quantity.amount);
+        add_proxy(token_code, grants_table, *grantor_as_agent, *agent, 0, delegated);
     }
-    
+
     agents_idx.modify(grantor_as_agent, name(), [&](auto& a) {
         a.set_balance(a.balance - quantity.amount);
         a.proxied += quantity.amount;
@@ -177,11 +170,11 @@ void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_c
     if (!agent_found && pct) {
         auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name, param.max_proxies.size(), &agents_table);
         eosio_assert(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
+        update_stake_proxied(token_code, agent_name);
         auto agent = get_agent_itr(token_code, agents_idx, agent_name);
         check_grant_terms(*agent, break_fee, break_min_own_staked);
-        update_stake_proxied(token_code, agent_name, param.frame_length, true);
-    
-        add_proxy(token_code, grants_table, *grantor_as_agent, *agent, pct, 0, 0, break_fee, break_min_own_staked);
+        
+        add_proxy(token_code, grants_table, *grantor_as_agent, *agent, pct, 0, break_fee, break_min_own_staked);
         changed = true;
     }
     
@@ -200,12 +193,12 @@ void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account, param.max_proxies.size(), &agents_table);
     
-    update_stake_proxied(token_code, account, param.frame_length, false);
+    update_stake_proxied(token_code, account);
 
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
     
-    auto share = delegate_traversal(token_code, agents_idx, grants_idx, account, quantity.amount);
+    auto share = delegate_traversal(token_code, agents_idx, grants_idx, account, quantity.amount, true);
     agents_idx.modify(agent, name(), [&](auto& a) { a.own_share += share; });
     update_stats(structures::stat {
         .id = 0,
@@ -235,12 +228,12 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
     payouts payouts_table(_self, _self.value);
-    send_scheduled_payout(payouts_table, account, param.payout_step_lenght, param.token_symbol);
+    send_scheduled_payout(payouts_table, account, param.payout_step_length, param.token_symbol, claim_mode);
     
     if(claim_mode)
         return;
     
-    update_stake_proxied(token_code, account, param.frame_length, false);
+    update_stake_proxied(token_code, account);
      
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
@@ -283,11 +276,14 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
         auto payout_itr = payout_lb_itr;
         while ((payout_itr != acc_index.end()) && (payout_itr->token_code == token_code) && (payout_itr->account == account)) {
             amount_sum += payout_itr->balance;
+            ++payout_itr;
         }
+        eosio_assert(amount_sum || quantity.amount, "nothing to cancel");
         eosio_assert(amount_sum >= quantity.amount, "insufficient funds");
-        
+        payout_itr = payout_lb_itr;
         while ((payout_itr != acc_index.end()) && (payout_itr->token_code == token_code) && (payout_itr->account == account)) {
             auto cur_amount = quantity.amount ? safe_prop(payout_itr->balance, quantity.amount, amount_sum) : payout_itr->balance;
+            
             balance_diff += cur_amount;
             if (cur_amount < payout_itr->balance) {
                 acc_index.modify(payout_itr, name(), [&](auto& p) { p.balance -= cur_amount; });
@@ -299,7 +295,7 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
         //TODO:? due to rounding, balance_diff usually will be less than requested. should we do something about it?
         shares_diff = total_funds ? safe_prop(agent->shares_sum, balance_diff, total_funds) : balance_diff;
     }
-    
+    eosio_assert(std::numeric_limits<int64_t>::max() - agent->shares_sum >= shares_diff, "shares_sum overflow");
     agents_idx.modify(agent, name(), [&](auto& a) {
         a.set_balance(a.balance + balance_diff);
         a.shares_sum += shares_diff;
@@ -332,25 +328,27 @@ void stake::update_stats(const structures::stat& stat_arg, name payer) {
     }
 }
 
-void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_lenght, symbol sym) {
+void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode) {
     const int64_t now = ::now();
-    eosio_assert(payout_step_lenght > 0, "SYSTEM: incorrect payout_step_lenght val");
+    eosio_assert(payout_step_length > 0, "SYSTEM: incorrect payout_step_length val");
     
     auto acc_index = payouts_table.get_index<"payoutacc"_n>();
     auto payout_itr = acc_index.lower_bound(std::make_tuple(sym.code(), account)); 
     int64_t amount = 0;
     while ((payout_itr != acc_index.end()) && (payout_itr->token_code == sym.code()) && (payout_itr->account == account)) {
         auto seconds_passed = now - payout_itr->last_step.utc_seconds;
+        
         eosio_assert(seconds_passed >= 0, "SYSTEM: incorrect seconds_passed val");
-        auto steps_passed = std::min(seconds_passed / payout_step_lenght, static_cast<int64_t>(payout_itr->steps_left));
+        auto steps_passed = std::min(seconds_passed / payout_step_length, static_cast<int64_t>(payout_itr->steps_left));
         if (steps_passed) {
             if(steps_passed != payout_itr->steps_left) {
                 auto cur_amount = safe_prop(payout_itr->balance, steps_passed, payout_itr->steps_left);
                 acc_index.modify(payout_itr, name(), [&](auto& p) {
                     p.balance -= cur_amount;
                     p.steps_left -= steps_passed;
-                    p.last_step = time_point_sec(p.last_step.utc_seconds + (steps_passed * payout_step_lenght));
+                    p.last_step = time_point_sec(p.last_step.utc_seconds + (steps_passed * payout_step_length));
                 });
+                amount += cur_amount;
                 ++payout_itr;
             }
             else {
@@ -361,9 +359,12 @@ void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t 
         else
             ++payout_itr;
     }
-    if(amount) {
+    if (amount) {
         INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {_self, config::active_name},
             {_self, account, asset(amount, sym), "unstaked tokens"});
+    }
+    else {
+        eosio_assert(!claim_mode, "nothing to claim");
     }
 }
 
@@ -423,7 +424,7 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
 } 
  
 void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-    int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num,
+    int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
     int64_t min_own_staked_for_election)
 {
     eosio::print("create stake for ", token_symbol.code(), "\n");
@@ -433,6 +434,9 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
         for (size_t i = 1; i < max_proxies.size(); i++) {
             eosio_assert(max_proxies[i - 1] >= max_proxies[i], "incorrect proxy levels");
         }
+    eosio_assert(frame_length > 0, "incorrect frame_length");
+    eosio_assert(payout_step_length > 0, "incorrect payout_step_length");
+    eosio_assert(min_own_staked_for_election >= 0, "incorrect min_own_staked_for_election");
     auto issuer = eosio::token::get_issuer(config::token_name, token_symbol.code());
     require_auth(issuer);
     params params_table(table_owner, table_owner.value);
@@ -443,7 +447,7 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
         .token_symbol = token_symbol,
         .max_proxies = max_proxies,
         .frame_length = frame_length,
-        .payout_step_lenght = payout_step_lenght,
+        .payout_step_length = payout_step_length,
         .payout_steps_num = payout_steps_num,
         .min_own_staked_for_election = min_own_staked_for_election
         };});
@@ -496,14 +500,17 @@ void stake::updatefunds(name account, symbol_code token_code) {
     //require_auth(anyone);
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
-    update_stake_proxied(token_code, account, param.frame_length, false);
+    update_stake_proxied(token_code, account);
 }
 
-void stake::change_balance(name account, asset quantity) {
+void stake::reward(name account, asset quantity) {
+    eosio_assert(quantity.amount > 0, "quantity must be positive");
     eosio_assert(quantity.is_valid(), "invalid quantity");
     auto token_code = quantity.symbol.code();
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
+    eosio::print("stake::reward: account = ", account, ", quantity = ", quantity, "\n");
+    
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
 
@@ -511,49 +518,35 @@ void stake::change_balance(name account, asset quantity) {
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
     
-    auto actual_amount = std::max(quantity.amount, -agent->balance);
     if (agent->get_total_funds()) {
-        agents_idx.modify(agent, name(), [&](auto& a) { a.set_balance(a.balance + actual_amount); });
+        agents_idx.modify(agent, name(), [&](auto& a) {
+            auto fee_amount = safe_pct(a.fee, quantity.amount);
+            auto net_amount = quantity.amount - fee_amount;
+            a.set_balance(a.balance + net_amount);
+            
+            auto total_funds = a.get_total_funds();
+            auto fee_share = total_funds && a.shares_sum ? safe_prop(a.shares_sum, fee_amount, total_funds) : fee_amount;
+            a.set_balance(a.balance + fee_amount);
+            a.shares_sum += fee_share;
+            a.own_share  += fee_share; 
+        });
     }
     else {
-        auto share = std::abs(actual_amount);
         agents_idx.modify(agent, name(), [&](auto& a) {
-            a.set_balance(actual_amount);
-            a.shares_sum = share;
-            a.own_share = share;
+            a.set_balance(quantity.amount);
+            a.shares_sum = quantity.amount;
+            a.own_share = quantity.amount;
         });
     }
     update_stats(structures::stat {
         .id = 0,
         .token_code = token_code,
-        .total_staked = actual_amount
+        .total_staked = quantity.amount
     }, issuer);
     
-    if (quantity.amount < 0 && actual_amount) {
-        quantity.amount = -actual_amount;
-        INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {_self, config::active_name},
-            {_self, issuer, quantity, ""});
-        INLINE_ACTION_SENDER(eosio::token, retire)(config::token_name, {issuer, config::amerce_name}, {quantity, ""});
-    }
-    else if (quantity.amount > 0) {
-        //we don't need actual_amount in this case
-        INLINE_ACTION_SENDER(eosio::token, issue)(config::token_name, {issuer, config::reward_name}, {issuer, quantity, ""});
-        INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {issuer, config::reward_name},
-            {issuer, _self, quantity, config::reward_memo}); 
-    }
-}
-
-void stake::amerce(name account, asset quantity) {
-    eosio_assert(quantity.amount > 0, "quantity must be positive");
-    eosio::print("stake::amerce: account = ", account, ", quantity = ", quantity, "\n");
-    quantity.amount = -quantity.amount;
-    change_balance(account, quantity);
-}
-
-void stake::reward(name account, asset quantity) {
-    eosio_assert(quantity.amount > 0, "quantity must be positive");
-    eosio::print("stake::reward: account = ", account, ", quantity = ", quantity, "\n");
-    change_balance(account, quantity);
+    INLINE_ACTION_SENDER(eosio::token, issue)(config::token_name, {issuer, config::reward_name}, {issuer, quantity, ""});
+    INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {issuer, config::reward_name},
+        {issuer, _self, quantity, config::reward_memo}); 
 }
 
 } /// namespace cyber
@@ -561,5 +554,5 @@ void stake::reward(name account, asset quantity) {
 DISPATCH_WITH_TRANSFER(cyber::stake, cyber::config::token_name, on_transfer,
     (create)(enable)(delegate)(setgrntterms)(recall)(withdraw)(claim)(cancelwd)
     (setproxylvl)(setproxyfee)(setminstaked)(setkey)
-    (updatefunds)(amerce)(reward)
+    (updatefunds)(reward)
 )

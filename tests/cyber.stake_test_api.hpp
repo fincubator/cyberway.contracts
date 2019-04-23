@@ -13,13 +13,13 @@ public:
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol,
-            std::vector<uint8_t> max_proxies, int64_t frame_length, int64_t payout_step_lenght, uint16_t payout_steps_num,
+            std::vector<uint8_t> max_proxies, int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
             int64_t min_own_staked_for_election = 0) {
         return push(N(create), issuer, args()
             ("token_symbol", token_symbol)
             ("max_proxies", max_proxies)
             ("frame_length", frame_length)
-            ("payout_step_lenght", payout_step_lenght)
+            ("payout_step_length", payout_step_length)
             ("payout_steps_num", payout_steps_num)
             ("min_own_staked_for_election", min_own_staked_for_election)
         );
@@ -65,6 +65,7 @@ public:
     }
     
     action_result withdraw(account_name account, asset quantity) {
+        BOOST_TEST_MESSAGE("--- " << account <<  " withdraws " << quantity);
         return push(N(withdraw), account, args()
             ("account", account)
             ("quantity", quantity)
@@ -72,6 +73,7 @@ public:
     }
     
     action_result cancelwd(account_name account, asset quantity) {
+        BOOST_TEST_MESSAGE("--- " << account <<  " cancels withdraw " << quantity);
         return push(N(cancelwd), account, args()
             ("account", account)
             ("quantity", quantity)
@@ -79,6 +81,7 @@ public:
     }
     
     action_result claim(account_name account, symbol_code token_code) {
+        BOOST_TEST_MESSAGE("--- " << account <<  " claims " << symbol(token_code << 8).name());
         return push(N(claim), account, args()
             ("account", account)
             ("token_code", token_code)
@@ -102,18 +105,18 @@ public:
             ("fee", fee)
         );
     }
-    
+    action_result setminstaked(account_name account, symbol_code token_code, int64_t min_own_staked) {
+        return push(N(setminstaked), account, args()
+            ("account", account)
+            ("token_code", token_code)
+            ("min_own_staked", min_own_staked)
+        );
+    }
+
     action_result updatefunds(account_name account, symbol_code token_code) {
         return push(N(updatefunds), account, args()
             ("account", account)
             ("token_code", token_code)
-        );
-    }
-    
-    action_result amerce(account_name issuer, account_name account, asset quantity) {
-        return push(N(amerce), issuer, args()
-            ("account", account)
-            ("quantity", quantity)
         );
     }
     

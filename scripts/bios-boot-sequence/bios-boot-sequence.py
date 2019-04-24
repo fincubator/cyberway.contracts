@@ -160,7 +160,7 @@ def createSystemAccounts():
     print("Golos-genesis: ", args.golos_genesis)
     for (a,inGenesis) in systemAccounts:
         print("Account: ", a, " inGenesis: ", inGenesis)
-        if not (args.golos_genesis and inGenesis):
+        if not args.golos_genesis or not inGenesis:
             retry(args.cleos + 'create account cyber ' + a + ' ' + args.public_key)
 
 def intToCurrency(i):
@@ -170,7 +170,7 @@ def allocateFunds(b, e):
     dist = numpy.random.pareto(1.161, e - b).tolist() # 1.161 = 80/20 rule
     dist.sort()
     dist.reverse()
-    factor = 1000000000 / sum(dist)
+    factor = 10000 / sum(dist)
     total = 0
     for i in range(b, e):
         funds = round(factor * dist[i - b] * 10000)
@@ -312,23 +312,25 @@ def stepStartBoot():
 def stepInstallSystemContracts():
     updateAuthority('cyber', 'reward', 'active', [args.public_key], [])
     retry(args.cleos + 'set contract cyber.domain ' + args.contracts_dir + 'cyber.domain/')
-    #retry(args.cleos + 'set contract cyber.token ' + args.contracts_dir + 'cyber.token/')
+    if not args.golos_genesis:
+        retry(args.cleos + 'set contract cyber.token ' + args.contracts_dir + 'cyber.token/')
     retry(args.cleos + 'set contract cyber.msig ' + args.contracts_dir + 'cyber.msig/')
     retry(args.cleos + 'set contract cyber.stake ' + args.contracts_dir + 'cyber.stake/')
     retry(args.cleos + 'set contract cyber.govern ' + args.contracts_dir + 'cyber.govern/')
     retry(args.cleos + 'set contract cyber ' + args.contracts_dir + 'cyber.bios/')
 def stepCreateTokens():
-    retry(args.cleos + 'push action cyber.token create \'["cyber", "10000000000.0000 %s"]\' -p cyber.token' % (args.symbol))
+    if not args.golos_genesis:
+        retry(args.cleos + 'push action cyber.token create \'["cyber", "10000000000.0000 %s"]\' -p cyber.token' % (args.symbol))
     totalAllocation = allocateFunds(0, len(accounts))
     retry(args.cleos + 'push action cyber.token issue \'["cyber", "%s", "memo"]\' -p cyber' % intToCurrency(totalAllocation))
     sleep(1)
 def stepConfigureSystem():
     retry(args.cleos + 'push action cyber.stake create \'["4,%s", [30, 10, 3, 1], 1800, 43200, 12, 0]\' -p cyber' % (args.symbol))
-    retry(args.cleos + 'push action cyber.stake setproxylvl \'{"account":"cyber", "token_code":"%s", "purpose_code":"", "level":0}\' -p cyber' % (args.symbol))
+    retry(args.cleos + 'push action cyber.stake setproxylvl \'{"account":"cyber", "token_code":"%s", "level":0}\' -p cyber' % (args.symbol))
     #retry(args.cleos + 'push action cyber.stake setminstaked \'{"account":"cyber", "token_code":"%s", "min_own_staked": 0}\' -p cyber' % (args.symbol))
     # Stake half of total supply for guaranteed election to the block producers
-    retry(args.cleos + 'push action cyber.token issue \'["cyber", "5000000000.0000 %s", ""]\' -p cyber' % (args.symbol))
-    retry(args.cleos + 'push action cyber.token transfer \'["cyber", "cyber.stake", "5000000000.0000 %s", ""]\' -p cyber' % (args.symbol))
+    retry(args.cleos + 'push action cyber.token issue \'["cyber", "500.0000 %s", ""]\' -p cyber' % (args.symbol))
+    retry(args.cleos + 'push action cyber.token transfer \'["cyber", "cyber.stake", "500.0000 %s", ""]\' -p cyber' % (args.symbol))
     retry(args.cleos + 'push action cyber.stake setkey \'{"account":"cyber","token_code":"%s","signing_key":"GLS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV"}\' -p cyber' % (args.symbol))
     sleep(1)
 def stepCreateStakedAccounts():

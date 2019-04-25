@@ -2,7 +2,8 @@ add_contract_with_abi(cyber.domain cyber.domain.abi ${CMAKE_CURRENT_SOURCE_DIR}/
 target_include_directories(cyber.domain.wasm
    PUBLIC
    ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.system/include
-   ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.token/include)
+   ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.token/include
+   ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 set_target_properties(cyber.domain.wasm
    PROPERTIES

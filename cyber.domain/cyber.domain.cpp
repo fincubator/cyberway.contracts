@@ -1,4 +1,5 @@
 #include "cyber.domain.hpp"
+#include <common/config.hpp>
 #include <cyber.system/cyber.system.hpp>
 #include <cyber.token/cyber.token.hpp>
 #include <eosiolib/eosio.hpp>
@@ -28,7 +29,7 @@ void validate_username(const username& n);
 
 symbol core_symbol() {
     // const static auto sym = system_contract::get_core_symbol();  // requires system contract, which is not ready yet
-    const static auto sym = symbol("SYS", 4);
+    const static auto sym = cyber::config::system_token;
     return sym;
 }
 

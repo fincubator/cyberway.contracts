@@ -41,9 +41,9 @@ static constexpr auto block_interval_ms = 3000;//1000 / 2;
 static constexpr int64_t blocks_per_year = int64_t(365)*24*60*60*1000/block_interval_ms;
 
 #ifndef UNIT_TEST_ENV
-    static constexpr auto system_token = eosio::symbol("SYS", 4);
+    static constexpr auto system_token = eosio::symbol("CYBER", 4);
 #else
-    static const auto system_token = eosio::chain::symbol(4, "SYS");
+    static const auto system_token = eosio::chain::symbol(4, "CYBER");
 #endif
 
 static const std::string retire_memo = "retire";

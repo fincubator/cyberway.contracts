@@ -143,7 +143,7 @@ struct structures {
     void change_balance(name account, asset quantity);
     void update_stats(const structures::stat& stat_arg, name payer = name());
     
-    static inline void check_staking(symbol_code token_code) {
+    static inline void staking_exists(symbol_code token_code) {
         params params_table(table_owner, table_owner.value);
         params_table.get(token_code.raw(), "no staking for token");
     };
@@ -160,17 +160,23 @@ struct structures {
 
 public:
 
-    static inline std::vector<std::pair<name, public_key> > get_top(uint16_t n, symbol_code token_code) {
-        check_staking(token_code);
+    struct elected_t {
+        name account;
+        int64_t votes = 0;
+        public_key signing_key = {};
+    };
+
+    static inline std::vector<elected_t> get_top(uint16_t n, symbol_code token_code) {
+        staking_exists(token_code);
         agents agents_table(table_owner, table_owner.value);
         auto agents_idx = agents_table.get_index<"byvotes"_n>();
 
-        std::vector<std::pair<name, public_key> > ret;
+        std::vector<elected_t> ret;
         size_t i = 0;
         auto agent_itr = agents_idx.lower_bound(std::make_tuple(token_code, std::numeric_limits<int64_t>::max(), name()));
         while ((agent_itr != agents_idx.end()) && (agent_itr->token_code == token_code) && (agent_itr->votes >= 0) && (i < n)) {
             if (agent_itr->signing_key != public_key{}) {
-                ret.emplace_back(std::make_pair(agent_itr->account, agent_itr->signing_key));
+                ret.emplace_back(elected_t{agent_itr->account, agent_itr->votes, agent_itr->signing_key});
                 ++i;
             }
             ++agent_itr;
@@ -179,7 +185,7 @@ public:
     }
     
     static inline int64_t get_votes_sum(symbol_code token_code) {
-        check_staking(token_code);
+        staking_exists(token_code);
         agents agents_table(table_owner, table_owner.value);
         auto agents_idx = agents_table.get_index<"byvotes"_n>();
         int64_t ret = 0;

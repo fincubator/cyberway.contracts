@@ -50,22 +50,6 @@ void govern::onblock(name producer) {
         update_and_reward_producers(producers_table, s);
         reward_workers(s);
     }
-    if (s.block_num % config::check_missing_blocks_interval == 0) {
-        for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
-            if (prod_itr->is_active() && prod_itr->account != producer) {
-                check_missing_blocks(producers_table, prod_itr, s.block_num);
-                //since last_block_produced does not change in check_missing_blocks,
-                //the penalty for each missed block increases over time for sleeping producers.
-            }
-        }
-    }
-    
-    auto prod_itr = producers_table.end();
-    if (producer != config::internal_name) {
-        prod_itr = producers_table.find(producer.value);
-        eosio_assert(prod_itr != producers_table.end(), "SYSTEM: producer does not exist");
-        check_missing_blocks(producers_table, prod_itr, s.block_num);
-    }
     
     if (maybe_promote_active_producers(s)) {
         s.active_producers_num = s.pending_active_producers.size();
@@ -73,7 +57,8 @@ void govern::onblock(name producer) {
     }
     
     if (producer != config::internal_name) {
-        eosio_assert(prod_itr != producers_table.end(), "SYSTEM: prod_itr == end");
+        auto prod_itr = producers_table.find(producer.value);
+        eosio_assert(prod_itr != producers_table.end(), "SYSTEM: producer does not exist");
         producers_table.modify(prod_itr, name(), [&](auto& a) {
             a.confirmed_balance += a.pending_balance + block_reward;
             a.pending_balance = 0;
@@ -124,6 +109,7 @@ bool govern::maybe_promote_active_producers(const structures::state_info& s) {
     if (!s.pending_active_producers.size()) {
         return false;
     }
+    
     eosio_assert(s.block_num, "SYSTEM: incorrect block_num val");
     
     producers producers_table(_self, _self.value);
@@ -137,7 +123,7 @@ bool govern::maybe_promote_active_producers(const structures::state_info& s) {
         else {
             producers_table.emplace(_self, [&]( auto &a ) { a = structures::producer {
                 .account = prod,
-                .elected = false,
+                .votes = -1,
                 .last_block_produced = s.block_num - 1,
                 .commencement_block = s.block_num
             };});
@@ -145,11 +131,11 @@ bool govern::maybe_promote_active_producers(const structures::state_info& s) {
     }
     for (const auto& prod : change_of_producers.fired) {
         auto prod_itr = producers_table.find(prod.value);
-        check_missing_blocks(producers_table, prod_itr, s.block_num);
         if (prod_itr != producers_table.end()) {
             producers_table.modify(prod_itr, name(), [&](auto& a) { a.commencement_block = 0; });
         }
     }
+    
     return true;
 }
 
@@ -182,22 +168,28 @@ void govern::reward_workers(structures::state_info& s) {
 }
 
 void govern::update_and_reward_producers(producers& producers_table, structures::state_info& s) {
-    auto new_producers = stake::get_top(config::elected_producers_num, system_token.code());
-    eosio_assert(new_producers.size() <= std::numeric_limits<uint16_t>::max(), "SYSTEM: incorrect producers num");
-    if (new_producers.size() < s.last_producers_num)
+    auto new_elected_producers = stake::get_top(config::elected_producers_num, system_token.code());
+    eosio_assert(new_elected_producers.size() <= std::numeric_limits<uint16_t>::max(), "SYSTEM: incorrect producers num");
+    if (new_elected_producers.size() < s.last_producers_num)
         return;
         
     std::vector<name> new_elected_producer_names;
-    new_elected_producer_names.reserve(new_producers.size());
-    for (const auto& prod : new_producers) {
-        new_elected_producer_names.emplace_back(prod.first);
+    std::vector<std::pair<name, public_key> > new_producers_with_keys;
+    new_elected_producer_names.reserve(new_elected_producers.size());
+    new_producers_with_keys.reserve(new_elected_producers.size());
+    std::map<name, int64_t> votes_map;
+    int temp_i = 0;
+    for (const auto& prod : new_elected_producers) {
+        new_elected_producer_names.emplace_back(prod.account);
+        new_producers_with_keys.emplace_back(std::make_pair(prod.account, prod.signing_key));
+        votes_map[prod.account] = prod.votes;
     }
-
-    shrink_to_active_producers(producers_table, new_producers);
-
-    auto packed_schedule = pack(new_producers);
+    
+    shrink_to_active_producers(producers_table, new_producers_with_keys);
+    
+    auto packed_schedule = pack(new_producers_with_keys);
     if (set_proposed_producers(packed_schedule.data(),  packed_schedule.size()) >= 0) {
-        s.last_producers_num = static_cast<uint16_t>(new_producers.size());
+        s.last_producers_num = static_cast<uint16_t>(new_producers_with_keys.size());
     }
     
     auto change_of_producers = get_change_of_producers(producers_table, new_elected_producer_names, false);
@@ -205,74 +197,64 @@ void govern::update_and_reward_producers(producers& producers_table, structures:
     for (const auto& prod : change_of_producers.hired) {
         producers_table.emplace(_self, [&]( auto &a ) { a = structures::producer {
             .account = prod,
-            .elected = true,
+            .votes = 0, // see below
             .last_block_produced = s.block_num - 1
         };});
     }
-    
+
     for (const auto& prod : change_of_producers.fired) {
         auto prod_itr = producers_table.find(prod.value);
-        producers_table.modify(prod_itr, name(), [&](auto& a) { a.elected = false; });
+        producers_table.modify(prod_itr, name(), [&](auto& a) { a.votes = -1; });
     }
     
     uint16_t actual_elected_num = 0;
+    int64_t total_votes_for_elected = 0;
     for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
-        if (prod_itr->elected) {
+        if (prod_itr->is_elected()) {
+            producers_table.modify(prod_itr, name(), [&](auto& a) { a.votes = votes_map[a.account]; });
             actual_elected_num++;
+            total_votes_for_elected += prod_itr->votes;
         }
     }
-    if (actual_elected_num) {
+    if (total_votes_for_elected) {
         auto reward_of_elected = safe_pct(s.funds, config::_100percent - config::workers_reward_pct);
-        auto even = reward_of_elected / actual_elected_num;
-        auto change = reward_of_elected - (even * actual_elected_num);
-        auto lucky_one = s.block_num % actual_elected_num;
+        
+        auto lucky_place = s.block_num % actual_elected_num;
+        auto lucky_name = name();
+        
+        auto change = reward_of_elected;
         auto i = 0;
         for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end(); ++prod_itr) {
-            if (prod_itr->elected) {
+            if (prod_itr->is_elected()) {
+                auto cur_reward = safe_prop(reward_of_elected, prod_itr->votes, total_votes_for_elected);
                 producers_table.modify(prod_itr, name(), [&](auto& a) { 
-                    a.pending_balance += even + (i == lucky_one ? change : 0);
+                    a.pending_balance += cur_reward;
                 });
+                change -= cur_reward;
+                if (i == lucky_place) {
+                    lucky_name = prod_itr->account;
+                }
                 i++;
             }
         }
-        s.funds -= reward_of_elected;
-    }
-}
-
-void govern::check_missing_blocks(producers& producers_table, producers::const_iterator prod_itr, uint32_t block_num) {
-    auto state = state_singleton(_self, _self.value);
-    eosio_assert(prod_itr->is_active(), ("SYSTEM: producer " + prod_itr->account.to_string() + " not active").c_str());
-    auto last_block = std::max(prod_itr->last_block_produced, prod_itr->commencement_block - 1);
-
-    eosio_assert(block_num > last_block, "SYSTEM: incorrect block_num val");
-    eosio_assert(state.get().active_producers_num, "SYSTEM: incorrect active_producers_num val");
-    
-    auto period = state.get().active_producers_num;
-    auto max_diff = (period * 2) - 1;
-    auto diff = block_num - last_block;
-    auto missing_blocks_num = diff > max_diff ? ((diff - max_diff) / period) + 1 : 0; //can we give a more accurate estimate?
-    
-    if (missing_blocks_num > config::allowable_number_of_missing_blocks) {
-        int64_t penalty = mul_cut(state.get().target_emission_per_block * config::missing_block_factor, missing_blocks_num);
-        producers_table.modify(prod_itr, name(), [&](auto& a) {
-            a.pending_balance = std::min(a.pending_balance, static_cast<decltype(a.pending_balance)>(0));
-            a.confirmed_balance -= penalty;
+        eosio_assert(static_cast<bool>(lucky_name), "SYSTEM: !lucky_name");
+        producers_table.modify(producers_table.find(lucky_name.value), name(), [&](auto& a) {
+            a.pending_balance += change;
         });
+        
+        s.funds -= reward_of_elected;
     }
 }
 
 void govern::sum_up(producers& producers_table) {
     for (auto prod_itr = producers_table.begin(); prod_itr != producers_table.end();) {
         
-        if (prod_itr->confirmed_balance < 0) {
-            continue;
-        }
-        else if (prod_itr->confirmed_balance > 0) {
+        if (prod_itr->confirmed_balance > 0) {
             INLINE_ACTION_SENDER(cyber::stake, reward)(config::stake_name, {config::issuer_name, config::active_name},
                 {prod_itr->account, asset(prod_itr->confirmed_balance, system_token)});
         }
         
-        if (prod_itr->elected || prod_itr->is_active()) {
+        if (prod_itr->is_elected() || prod_itr->is_active()) {
             producers_table.modify(prod_itr, name(), [&](auto& a) { a.confirmed_balance = 0; });
             ++prod_itr;
         }

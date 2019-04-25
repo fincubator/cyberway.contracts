@@ -19,7 +19,7 @@
             "base": "",
             "fields": [
                 { "type": "name",          "name": "account" },
-                { "type": "bool",          "name": "elected" },
+                { "type": "int64",         "name": "votes" },
                 { "type": "uint32",        "name": "last_block_produced" },
                 { "type": "uint32",        "name": "commencement_block" },
                 { "type": "int64",         "name": "pending_balance" },

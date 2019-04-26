@@ -526,6 +526,7 @@ BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(10000000000, token._symbol)));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, stake_u , ""));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _bob,   stake_u, ""));
+    BOOST_CHECK_EQUAL(success(), token.open(_carol, token._symbol, _carol)); // resource usage
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _issuer, stake_w, ""));
  
     BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, frame_length, 7 * 24 * 60 * 60, 52));

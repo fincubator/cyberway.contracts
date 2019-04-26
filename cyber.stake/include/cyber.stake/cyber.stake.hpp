@@ -141,7 +141,6 @@ struct structures {
         int16_t pct, int64_t share, int16_t break_fee = -1, int64_t break_min_own_staked = -1);
 
     void change_balance(name account, asset quantity);
-    void update_stats(const structures::stat& stat_arg, name payer = name());
     
     static inline void staking_exists(symbol_code token_code) {
         params params_table(table_owner, table_owner.value);
@@ -156,6 +155,15 @@ struct structures {
         auto agent = get_agent_itr(token_code, agents_idx, account);
         agents_idx.modify(agent, name(), f);
     }
+    
+    template<typename Lambda>
+    void modify_stat(symbol_code token_code, Lambda f) {
+        stats stats_table(table_owner, table_owner.value);
+        auto stat = stats_table.find(token_code.raw());
+        eosio_assert(stat != stats_table.end(), "stat doesn't exist");
+        stats_table.modify(stat, name(), f);
+    }
+    
     static void check_grant_terms(const structures::agent& agent, int16_t break_fee, int64_t break_min_own_staked);
 
 public:
@@ -209,7 +217,7 @@ public:
     
     [[eosio::action]] void setgrntterms(name grantor_name, name agent_name, symbol_code token_code, 
         int16_t pct, int16_t break_fee, int64_t break_min_own_staked);
-    [[eosio::action]] void recall     (name grantor_name, name agent_name, symbol_code token_code, int16_t pct);
+    [[eosio::action]] void recall(name grantor_name, name agent_name, symbol_code token_code, int16_t pct);
     
     [[eosio::action]] void withdraw(name account, asset quantity);
     [[eosio::action]] void claim(name account, symbol_code token_code);

@@ -200,11 +200,7 @@ void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
     
     auto share = delegate_traversal(token_code, agents_idx, grants_idx, account, quantity.amount, true);
     agents_idx.modify(agent, name(), [&](auto& a) { a.own_share += share; });
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = quantity.amount
-    }, from);
+    modify_stat(token_code, [&](auto& s) { s.total_staked += quantity.amount; });
 }
 
 void stake::claim(name account, symbol_code token_code) {
@@ -301,31 +297,7 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
         a.shares_sum += shares_diff;
         a.own_share += shares_diff;
     });
-    
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = balance_diff
-    });
-}
- 
-void stake::update_stats(const structures::stat& stat_arg, name payer) {
-    stats stats_table(table_owner, table_owner.value);
-    auto stat = stats_table.find(stat_arg.token_code.raw());
-
-    if (stat == stats_table.end() && payer != name()) {
-        eosio_assert(stat_arg.total_staked >= 0, "SYSTEM: incorrect total_staked");
-        stats_table.emplace(payer, [&](auto& s) { s = stat_arg; s.id = stat_arg.token_code.raw(); });
-    }
-    else if (stat != stats_table.end()) {
-        stats_table.modify(stat, name(), [&](auto& s) {
-            s.total_staked += stat_arg.total_staked;
-            s.enabled = s.enabled || stat_arg.enabled;
-        });
-    }
-    else {
-        eosio_assert(false, "stats doesn't exist");
-    }
+    modify_stat(token_code, [&](auto& s) { s.total_staked += balance_diff; });
 }
 
 void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode) {
@@ -427,7 +399,8 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
     int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
     int64_t min_own_staked_for_election)
 {
-    eosio::print("create stake for ", token_symbol.code(), "\n");
+    auto token_code = token_symbol.code();
+    eosio::print("create stake for ", token_code, "\n");
     eosio_assert(max_proxies.size(), "no proxy levels are specified");
     eosio_assert(max_proxies.size() < std::numeric_limits<uint8_t>::max(), "too many proxy levels");
     if (max_proxies.size() > 1)
@@ -437,34 +410,38 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
     eosio_assert(frame_length > 0, "incorrect frame_length");
     eosio_assert(payout_step_length > 0, "incorrect payout_step_length");
     eosio_assert(min_own_staked_for_election >= 0, "incorrect min_own_staked_for_election");
-    auto issuer = eosio::token::get_issuer(config::token_name, token_symbol.code());
+    auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
     params params_table(table_owner, table_owner.value);
-    eosio_assert(params_table.find(token_symbol.code().raw()) == params_table.end(), "already exists");
+    eosio_assert(params_table.find(token_code.raw()) == params_table.end(), "already exists");
     
     params_table.emplace(issuer, [&](auto& p) { p = {
-        .id = token_symbol.code().raw(),
+        .id = token_code.raw(),
         .token_symbol = token_symbol,
         .max_proxies = max_proxies,
         .frame_length = frame_length,
         .payout_step_length = payout_step_length,
         .payout_steps_num = payout_steps_num,
         .min_own_staked_for_election = min_own_staked_for_election
-        };});
+    };});
+        
+    stats stats_table(table_owner, table_owner.value);
+    eosio_assert(stats_table.find(token_code.raw()) == stats_table.end(), "SYSTEM: already exists");
+    stats_table.emplace(issuer, [&](auto& s) { s = {
+        .id = token_code.raw(),
+        .token_code = token_code,
+        .total_staked = 0
+    };});    
 }
 
 void stake::enable(symbol token_symbol) {
     auto token_code = token_symbol.code();
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
-    params params_table(table_owner, table_owner.value);
-    params_table.get(token_code.raw(), "no staking for token");
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = 0,
-        .enabled = true
-    }, issuer);
+    modify_stat(token_code, [&](auto& s) {
+        eosio_assert(!s.enabled, "already enabled");
+        s.enabled = true;
+    });
 }
 
 stake::agents_idx_t::const_iterator stake::get_agent_itr(symbol_code token_code, stake::agents_idx_t& agents_idx, name agent_name, int16_t proxy_level_for_emplaced, agents* agents_table, bool* emplaced) {
@@ -538,15 +515,11 @@ void stake::reward(name account, asset quantity) {
             a.own_share = quantity.amount;
         });
     }
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = quantity.amount
-    }, issuer);
+    modify_stat(token_code, [&](auto& s) { s.total_staked += quantity.amount; });
     
     INLINE_ACTION_SENDER(eosio::token, issue)(config::token_name, {issuer, config::reward_name}, {issuer, quantity, ""});
     INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {issuer, config::reward_name},
-        {issuer, _self, quantity, config::reward_memo}); 
+        {issuer, _self, quantity, config::reward_memo});
 }
 
 } /// namespace cyber

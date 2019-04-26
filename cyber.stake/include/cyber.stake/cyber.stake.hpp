@@ -136,7 +136,8 @@ struct structures {
     //return: share
     int64_t delegate_traversal(symbol_code token_code, agents_idx_t& agents_idx, grants_idx_t& grants_idx, name agent_name, int64_t amount, bool refill = false);
     
-    agents_idx_t::const_iterator get_agent_itr(symbol_code token_code, agents_idx_t& agents_idx, name agent_name, int16_t proxy_level_for_emplaced = -1, agents* agents_table = nullptr, bool* emplaced = nullptr);
+    agents_idx_t::const_iterator get_agent_itr(symbol_code token_code, agents_idx_t& agents_idx, name agent_name);
+    void emplace_agent(name account, agents& agents_table, const structures::param& param, name ram_payer);
     void add_proxy(symbol_code token_code, grants& grants_table, const structures::agent& grantor_as_agent, const structures::agent& agent, 
         int16_t pct, int64_t share, int16_t break_fee = -1, int64_t break_min_own_staked = -1);
 
@@ -212,6 +213,8 @@ public:
         int64_t min_own_staked_for_election);
         
     [[eosio::action]] void enable(symbol token_symbol);
+    
+    [[eosio::action]] void open(name owner, symbol_code token_code, std::optional<name> ram_payer);
 
     [[eosio::action]] void delegate(name grantor_name, name agent_name, asset quantity);
     

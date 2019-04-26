@@ -30,6 +30,12 @@ public:
         );
     }
     
+    action_result open(account_name owner, symbol_code token_code, account_name ram_payer = account_name(0)) {
+        return ram_payer ? 
+            push(N(open), ram_payer, args()("owner", owner)("token_code", token_code)("ram_payer", ram_payer)) : 
+            push(N(open), owner,     args()("owner", owner)("token_code", token_code));
+    }
+    
     action_result enable(account_name issuer, symbol token_symbol) {
         return push(N(enable), issuer, args()
             ("token_symbol", token_symbol)
@@ -132,8 +138,12 @@ public:
         );
     }
     
-    action_result register_candidate(account_name account, symbol_code token_code) {
-        
+    action_result register_candidate(account_name account, symbol_code token_code, bool need_to_open = true) {
+        if (need_to_open) {
+            auto ret = open(account, token_code);
+            if(ret != base_tester::success())
+                return ret;
+        }
         auto ret = setproxylvl(account, token_code, 0);
         if(ret != base_tester::success())
             return ret;

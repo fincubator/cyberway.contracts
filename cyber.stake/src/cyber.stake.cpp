@@ -168,7 +168,7 @@ void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_c
         eosio_assert(pct_sum <= config::_100percent, "too high pct value\n");
     }
     if (!agent_found && pct) {
-        auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name, param.max_proxies.size(), &agents_table);
+        auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);
         eosio_assert(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
         update_stake_proxied(token_code, agent_name);
         auto agent = get_agent_itr(token_code, agents_idx, agent_name);
@@ -191,8 +191,11 @@ void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
     
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
-    auto agent = get_agent_itr(token_code, agents_idx, account, param.max_proxies.size(), &agents_table);
-    
+    auto agent = agents_idx.find(std::make_tuple(token_code, account));
+    if (agent == agents_idx.end()) {
+        emplace_agent(account, agents_table, param, from);
+        agent = agents_idx.find(std::make_tuple(token_code, account));
+    }
     update_stake_proxied(token_code, account);
 
     grants grants_table(table_owner, table_owner.value);
@@ -371,11 +374,10 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     eosio_assert(level <= param.max_proxies.size(), "level too high");
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
-    bool emplaced = false;
-    auto agent = get_agent_itr(token_code, agents_idx, account, level, &agents_table, &emplaced);
+    auto agent = get_agent_itr(token_code, agents_idx, account);
     eosio_assert(level || agent->min_own_staked >= param.min_own_staked_for_election, 
             "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
-    eosio_assert(emplaced || (level != agent->proxy_level), "proxy level has not been changed");
+    eosio_assert(level != agent->proxy_level, "proxy level has not been changed");
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
     uint8_t proxies_num = 0;
@@ -387,12 +389,10 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     eosio_assert(level || !proxies_num, "can't set an ultimate level because the user has a proxy");
     eosio_assert(!level || proxies_num <= param.max_proxies[level - 1], "can't set proxy level, user has too many proxies");
 
-    if(!emplaced) {
-        agents_idx.modify(agent, name(), [&](auto& a) { 
-            a.proxy_level = level;
-            a.votes = level ? -1 : a.balance;
-        });
-    }
+    agents_idx.modify(agent, name(), [&](auto& a) { 
+        a.proxy_level = level;
+        a.votes = level ? -1 : a.balance;
+    });
 } 
  
 void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
@@ -444,33 +444,34 @@ void stake::enable(symbol token_symbol) {
     });
 }
 
-stake::agents_idx_t::const_iterator stake::get_agent_itr(symbol_code token_code, stake::agents_idx_t& agents_idx, name agent_name, int16_t proxy_level_for_emplaced, agents* agents_table, bool* emplaced) {
-    auto key = std::make_tuple(token_code, agent_name);
-    auto agent = agents_idx.find(key);
+void stake::open(name owner, symbol_code token_code, std::optional<name> ram_payer = std::nullopt) {
     
-    if (emplaced)
-        *emplaced = false;
+    auto actual_ram_payer = ram_payer.value_or(owner);
+    require_auth(actual_ram_payer);
+    
+    params params_table(table_owner, table_owner.value);
+    const auto& param = params_table.get(token_code.raw(), "no staking for token");
+    agents agents_table(table_owner, table_owner.value);
+    auto agents_idx = agents_table.get_index<"bykey"_n>();
+    eosio_assert(agents_idx.find(std::make_tuple(token_code, owner)) == agents_idx.end(), "agent already exists");
+    emplace_agent(owner, agents_table, param, actual_ram_payer);
+}
 
-    if(proxy_level_for_emplaced < 0) {
-        eosio_assert(agent != agents_idx.end(), ("agent " + agent_name.to_string() + " doesn't exist").c_str());
-    }
-    else if(agent == agents_idx.end()) {
+stake::agents_idx_t::const_iterator stake::get_agent_itr(symbol_code token_code, stake::agents_idx_t& agents_idx, name agent_name) {
+    auto ret = agents_idx.find(std::make_tuple(token_code, agent_name));
+    eosio_assert(ret != agents_idx.end(), ("agent " + agent_name.to_string() + " doesn't exist").c_str());
+    return ret;
+}
 
-        eosio_assert(static_cast<bool>(agents_table), "SYSTEM: agents_table can't be null");
-        (*agents_table).emplace(agent_name, [&](auto& a) { a = {
-            .id = agents_table->available_primary_key(),
-            .token_code = token_code,
-            .account = agent_name,
-            .proxy_level = static_cast<uint8_t>(proxy_level_for_emplaced),
-            .votes = proxy_level_for_emplaced ? -1 : 0,
-            .last_proxied_update = time_point_sec(::now())
-        };});
-        
-        agent = agents_idx.find(key);
-        if (emplaced)
-            *emplaced = true;
-    }
-    return agent;
+void stake::emplace_agent(name account, agents& agents_table, const structures::param& param, name ram_payer) {
+    agents_table.emplace(ram_payer, [&](auto& a) { a = {
+        .id = agents_table.available_primary_key(),
+        .token_code = param.token_symbol.code(),
+        .account = account,
+        .proxy_level = static_cast<uint8_t>(param.max_proxies.size()),
+        .votes = -1,
+        .last_proxied_update = time_point_sec(::now())
+    };});
 }
 
 void stake::updatefunds(name account, symbol_code token_code) {
@@ -525,7 +526,7 @@ void stake::reward(name account, asset quantity) {
 } /// namespace cyber
 
 DISPATCH_WITH_TRANSFER(cyber::stake, cyber::config::token_name, on_transfer,
-    (create)(enable)(delegate)(setgrntterms)(recall)(withdraw)(claim)(cancelwd)
+    (create)(enable)(open)(delegate)(setgrntterms)(recall)(withdraw)(claim)(cancelwd)
     (setproxylvl)(setproxyfee)(setminstaked)(setkey)
     (updatefunds)(reward)
 )

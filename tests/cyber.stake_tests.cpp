@@ -66,6 +66,9 @@ public:
             BOOST_CHECK_EQUAL(success(), token.issue(_issuer, acc, token.from_amount(stake_amount), ""));
             BOOST_CHECK_EQUAL(success(), token.transfer(acc, _code, token.from_amount(stake_amount)));
         }
+        else {
+            BOOST_CHECK_EQUAL(success(), stake.open(acc, token._symbol.to_symbol_code()));
+        }
         if (level != max_proxy_level || !stake_amount) {
             BOOST_CHECK_EQUAL(success(), stake.setproxylvl(acc, token._symbol.to_symbol_code(), level));
         }
@@ -111,6 +114,9 @@ public:
         };
         static string no_agent() {
             return "agent doesn't exist";
+        }
+        const string agent_exists() {
+            return amsg(std::string("agent already exists"));
         }
         const string no_funds() {
             return amsg(std::string("insufficient funds"));
@@ -187,6 +193,9 @@ BOOST_FIXTURE_TEST_CASE(basic_tests, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, stake_c, ""));
  
     BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, frame_length, 7 * 24 * 60 * 60, 52));
+    BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code()));
 
     BOOST_TEST_MESSAGE("--- alice stakes " << stake_a); 
     BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, stake_a));
@@ -275,6 +284,9 @@ BOOST_FIXTURE_TEST_CASE(increase_proxy_level_test, cyber_stake_tester) try {
     asset staked(10000000, token._symbol);
     BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(1000000000, token._symbol)));
     BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, frame_length, 7 * 24 * 60 * 60, 52));
+    BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code()));
 
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, staked, ""));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, staked, ""));
@@ -323,6 +335,23 @@ BOOST_FIXTURE_TEST_CASE(increase_proxy_level_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.recall(_alice, _carol, token._symbol.to_symbol_code(), cfg::_100percent));
     produce_block();
 
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(open_test, cyber_stake_tester) try {
+    asset stake_u(100, token._symbol);
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(10000000000, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, stake_u , ""));
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, {1}, 1, 7 * 24 * 60 * 60, 52));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, stake_u));
+    BOOST_CHECK_EQUAL(err.agent_exists(), stake.open(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
+    BOOST_CHECK(err.is_costs_too_much_mssg(stake.open(_carol, token._symbol.to_symbol_code())));
+    BOOST_CHECK_EQUAL(err.no_agent(), stake.delegate(_alice, _carol, stake_u));
+    BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
+    produce_block();
+    BOOST_CHECK_EQUAL(err.agent_exists(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
+    produce_block();
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
@@ -967,7 +996,10 @@ BOOST_FIXTURE_TEST_CASE(recursive_update_test, cyber_stake_tester) try {
             cur_level_accs.emplace_back(user);
             create_accounts({user});
             BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, staked, ""));
-            BOOST_CHECK_EQUAL(success(), stake.setproxylvl(user, token._symbol.to_symbol_code(), level));
+            BOOST_CHECK_EQUAL(success(), stake.open(user, token._symbol.to_symbol_code()));
+            if (level != max_proxies.size()) {
+                BOOST_CHECK_EQUAL(success(), stake.setproxylvl(user, token._symbol.to_symbol_code(), level));
+            }
             for (auto proxy : prev_level_accs) {
                 int16_t pct = (1.0 / prev_level_accs.size()) * cfg::_100percent;
                 BOOST_TEST_MESSAGE("--- setgrntterms pct: " << pct << " " << user << " -> " << proxy);

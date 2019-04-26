@@ -24,6 +24,14 @@
                 { "type": "int64",                  "name": "min_own_staked_for_election"  }
             ]
         },{
+            "name": "open_args",
+            "base": "",
+            "fields": [
+                { "type": "name",                   "name": "owner" },
+                { "type": "symbol_code",            "name": "token_code" },
+                { "type": "name?",                  "name": "ram_payer" }
+            ]
+        },{
             "name": "enable_args",
             "base": "",
             "fields": [
@@ -107,6 +115,10 @@
         {
             "name": "create",
             "type": "create_args",
+            "ricardian_contract": ""
+        },{
+            "name": "open",
+            "type": "open_args",
             "ricardian_contract": ""
         },{
             "name": "enable",

@@ -273,9 +273,9 @@ BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_govern_tester) try {
     BOOST_CHECK_EQUAL(govern.get_active_elected_producers(), govern.make_producers_group(crowd_and_bob));
    
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, asset(3, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, stake_account_name, asset(1, token._symbol)));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 1));
     
-    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, stake_account_name, asset(1, token._symbol)));
     BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, asset(1, token._symbol)));
     
     govern.wait_schedule_activation();
@@ -317,6 +317,7 @@ BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_govern_tester) try {
 BOOST_FIXTURE_TEST_CASE(no_key_test, cyber_govern_tester) try {
     BOOST_TEST_MESSAGE("no_key_test");
     deploy_sys_contracts();
+    BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
     stake.register_candidate(_bob, token._symbol.to_symbol_code());
     govern.wait_schedule_activation();

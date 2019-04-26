@@ -22,13 +22,14 @@ struct structures {
 
     struct [[eosio::table]] producer {
         name account;
-        bool elected;
+        int64_t votes;
         uint32_t last_block_produced = 0;
         uint32_t commencement_block = 0;
         int64_t pending_balance = 0; //can be negative
         int64_t confirmed_balance = 0;
         uint64_t primary_key()const { return account.value; }
         bool is_active() const { return static_cast<bool>(commencement_block); };
+        bool is_elected() const { return votes >= 0; };
     };
 };
 
@@ -44,7 +45,6 @@ struct structures {
     void shrink_to_active_producers(producers& producers_table, std::vector<std::pair<name, public_key> >& arg);
     void update_and_reward_producers(producers& producers_table, structures::state_info& s);
     void reward_workers(structures::state_info& s);
-    void check_missing_blocks(producers& producers_table, producers::const_iterator prod_itr, uint32_t block_num);
     void sum_up(producers& producers_table);
     bool maybe_promote_active_producers(const structures::state_info& s);
     int64_t get_target_emission_per_block(int64_t supply) const;

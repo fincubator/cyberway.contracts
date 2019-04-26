@@ -3,7 +3,6 @@
 #include "cyber.stake_test_api.hpp"
 #include "cyber.govern_test_api.hpp"
 #include "contracts.hpp"
-#include "../cyber.stake/include/cyber.stake/config.hpp"
 #include "../cyber.bios/include/cyber.bios/config.hpp"
 #include <eosio/chain/block_header_state.hpp>
 #include <eosio/chain/int_arithmetic.hpp>
@@ -25,16 +24,6 @@ protected:
     cyber_govern_api govern;
 
     time_point_sec head_block_time() { return time_point_sec(control->head_block_time().time_since_epoch().to_seconds()); };
-    
-    account_name user_name(size_t n) {
-        string ret_str("user");
-        while (n) {
-            constexpr auto q = 'z' - 'a' + 1;
-            ret_str += std::string(1, 'a' + n % q);
-            n /= q;
-        }
-        return string_to_name(ret_str.c_str()); 
-    }; 
  
 public: 
     cyber_stake_tester()
@@ -48,7 +37,6 @@ public:
         produce_block();
         install_contract(_code, contracts::stake_wasm(), contracts::stake_abi());
         install_contract(cfg::token_name, contracts::token_wasm(), contracts::token_abi());
-        
     }
     
     const account_name _issuer = cfg::issuer_name;
@@ -56,12 +44,6 @@ public:
     const account_name _bob = N(bob);
     const account_name _carol = N(carol);
     const account_name _whale = N(whale);
-    
-    void issuer_delegate_authority(account_name account) {
-        delegate_authority(_issuer, {account}, cfg::token_name, N(issue), cfg::reward_name);
-        produce_block();
-        delegate_authority(_issuer, {account}, cfg::token_name, N(transfer), cfg::reward_name);
-    }
     
     void deploy_sys_contracts() {
         BOOST_TEST_MESSAGE("--- creating token and stake"); 
@@ -76,36 +58,6 @@ public:
         install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
         produce_block();
         BOOST_TEST_MESSAGE("    ...done");
-    }
-    
-    uint32_t produce_blocks_to_proposal(uint32_t prev_block_num, uint8_t bps) {
-        uint32_t need_blocks = (bps * 3) + (cfg::reward_from_funds_interval - prev_block_num % cfg::reward_from_funds_interval);
-        produce_blocks(need_blocks);
-        BOOST_TEST_MESSAGE("--- produce " << need_blocks << " blocks");
-        return prev_block_num + need_blocks;
-    }
-    
-    int64_t get_emission_per_block(double rate) {
-        return (token.get_stats()["supply"].as<asset>().get_amount() * rate) / cfg::blocks_per_year;
-    }
-    
-    const std::map<account_name, int64_t> get_rewards_of_elected(int64_t emission_per_block, uint32_t cur_block, const std::map<account_name, uint32_t>& prod_blocks) {
-        uint32_t total_blocks = 0;
-        for (auto& prod : prod_blocks) {
-            total_blocks += prod.second;
-        }
-        size_t i = 0;
-        int64_t total_reward = ((emission_per_block * (cfg::_100percent - cfg::block_reward_pct) / cfg::_100percent) * total_blocks) * 
-            (cfg::_100percent - cfg::workers_reward_pct) / cfg::_100percent;
-        std::map<account_name, int64_t> ret;
-        for (auto& prod : prod_blocks) {
-            ret[prod.first] += total_reward / prod_blocks.size();
-            if(cur_block % prod_blocks.size() == i) {
-                ret[prod.first] += total_reward % prod_blocks.size();
-            }
-            i++;
-        }
-        return ret;
     }
     
     void create_agent(account_name acc, int64_t stake_amount, size_t level, size_t max_proxy_level) {
@@ -218,7 +170,6 @@ public:
 BOOST_AUTO_TEST_SUITE(cyber_stake_tests)
 BOOST_FIXTURE_TEST_CASE(basic_tests, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("Basic stake tests");
-    issuer_delegate_authority(_code);
 
     std::vector<uint8_t> max_proxies = {30, 10, 3, 1};
     int64_t frame_length = 30;
@@ -315,7 +266,6 @@ BOOST_FIXTURE_TEST_CASE(basic_tests, cyber_stake_tester) try {
 
 BOOST_FIXTURE_TEST_CASE(increase_proxy_level_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("Increase proxy level test");
-    issuer_delegate_authority(_code);
     
     std::vector<uint8_t> max_proxies = {30, 10, 3, 1};
     int64_t frame_length = 30;
@@ -375,148 +325,8 @@ BOOST_FIXTURE_TEST_CASE(increase_proxy_level_test, cyber_stake_tester) try {
 
 } FC_LOG_AND_RETHROW()
 
-//TODO: move it to cyber.govern_tests
-BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_stake_tester) try {
-    BOOST_TEST_MESSAGE("Rewards test");
-    deploy_sys_contracts();
-    
-    issuer_delegate_authority(govern_account_name);
-    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(cfg::blocks_per_year * 100, token._symbol), ""));
-    stake.register_candidate(_bob, token._symbol.to_symbol_code());
-    stake.register_candidate(_alice, token._symbol.to_symbol_code());
-    produce_block();
-    auto lpu = head_block_time();
-    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_bob, token._symbol.to_symbol_code()));
-    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_alice, token._symbol.to_symbol_code()));
-    govern.wait_update_schedule_and_reward();
-    govern.wait_schedule_activation();
-    auto blocks_num = govern.wait_update_schedule_and_reward();
-    std::map<account_name, uint32_t> prod_blocks;
-    prod_blocks[_alice] = blocks_num / 2;
-    prod_blocks[_bob] = blocks_num / 2;
-    if (blocks_num % 2) {
-        prod_blocks[control->head_block_producer()]++;
-    }
-    auto emission_per_block = get_emission_per_block(double(cfg::emission_addition + cfg::emission_factor) / cfg::_100percent);
-    auto rewards_of_elected     = get_rewards_of_elected    (emission_per_block, govern.get_block_num(), prod_blocks);
-    auto last_prod = control->head_block_producer();
-    auto prev_prod = last_prod == _alice ? _bob : _alice;
-    
-    BOOST_CHECK_EQUAL(govern.get_producer(last_prod)["pending_balance"].as<int64_t>(), 0);
-    BOOST_CHECK_EQUAL(govern.get_producer(last_prod)["confirmed_balance"].as<int64_t>(), get_reward_for_blocks(emission_per_block, prod_blocks[last_prod]) + rewards_of_elected[last_prod]);
-    BOOST_CHECK_EQUAL(govern.get_producer(prev_prod)["pending_balance"].as<int64_t>(), rewards_of_elected[prev_prod]);
-    BOOST_CHECK_EQUAL(govern.get_producer(prev_prod)["confirmed_balance"].as<int64_t>(), get_reward_for_blocks(emission_per_block, prod_blocks[prev_prod]));
-
-    last_prod = control->head_block_producer();
-    prev_prod = last_prod == _alice ? _bob : _alice;
-    auto block_before_missed = govern.get_block_num();
-    for (auto i = 0; i < 20; i++) {
-        if (control->pending_block_state()->header.producer == last_prod) {
-            produce_block(fc::microseconds(eosio::chain::config::block_interval_us * 2));
-            i++;
-        }
-        else {
-            produce_block();
-        }
-        prod_blocks[prev_prod]++;
-    }
-    produce_block();
-    
-    auto period = 2;
-    auto max_diff = (period * 2) - 1;
-    auto diff = govern.get_block_num() - block_before_missed;
-    auto missing_blocks_num = ((diff - max_diff) / period) + 1;
-
-    auto penalty = emission_per_block * cfg::missing_block_factor * missing_blocks_num;
-    BOOST_TEST_MESSAGE("--- " << last_prod << " missed " <<  missing_blocks_num << " blocks" << "; penalty = " << penalty);
-    
-    BOOST_CHECK_EQUAL(govern.get_producer(last_prod)["confirmed_balance"].as<int64_t>(), 
-        get_reward_for_blocks(emission_per_block, prod_blocks[last_prod] + 1) + rewards_of_elected[last_prod] - penalty);
-    BOOST_CHECK_EQUAL(govern.get_producer(prev_prod)["confirmed_balance"].as<int64_t>(), 
-        rewards_of_elected[prev_prod] + get_reward_for_blocks(emission_per_block, prod_blocks[prev_prod]));
-
-    produce_block();
-} FC_LOG_AND_RETHROW()
-
-//TODO: move it to cyber.govern_tests and improve
-BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_stake_tester) try {
-    
-    BOOST_TEST_MESSAGE("Set producers test");
-    deploy_sys_contracts();
-    issuer_delegate_authority(govern_account_name);
-    produce_blocks(3);
-    uint32_t block_num = 0;
-    stake.register_candidate(_bob, token._symbol.to_symbol_code());
-    block_num = produce_blocks_to_proposal(block_num, 1);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group({_bob}));
-    stake.register_candidate(_alice, token._symbol.to_symbol_code());
-    block_num = produce_blocks_to_proposal(block_num, 1);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group({_bob, _alice}));
-    
-    std::vector<account_name> producers;
-    std::vector<account_name> crowd_of_bps;
-    for (int u = cfg::active_producers_num - 2; u >= 0; u--) {
-        auto user = user_name(u);
-        crowd_of_bps.emplace_back(user);
-        create_accounts({user});
-        stake.register_candidate(user, token._symbol.to_symbol_code());
-        BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, asset((u + 1) * 1000, token._symbol), ""));
-        BOOST_CHECK_EQUAL(success(), token.transfer(user, _code, asset((u + 1) * 1000, token._symbol)));
-    }
-    auto crowd_and_alice = crowd_of_bps;
-    crowd_and_alice.emplace_back(_alice);
-    auto crowd_and_bob = crowd_of_bps;
-    crowd_and_bob.emplace_back(_bob);
-
-    block_num = produce_blocks_to_proposal(block_num, 2);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
-    
-    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, asset(3, token._symbol), ""));
-    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 1));
-    
-    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, asset(1, token._symbol)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, asset(1, token._symbol)));
-    
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_bob));
-    
-    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, asset(2, token._symbol)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _alice, asset(2, token._symbol)));
-    
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
-    
-    stake.register_candidate(_whale, token._symbol.to_symbol_code());
-    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(100500, token._symbol), ""));
-    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, asset(100500, token._symbol)));
-    
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    produce_blocks(4); //?
-    
-    crowd_of_bps.back() = _whale;
-    crowd_and_alice = crowd_of_bps;
-    crowd_and_alice.emplace_back(_alice);
-    crowd_and_bob = crowd_of_bps;
-    crowd_and_bob.emplace_back(_bob);
-    auto crowd_and_user = crowd_of_bps;
-    crowd_and_user.emplace_back(user_name(0));
-    
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_bob));
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_user));
-    
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_bob));
-    block_num = produce_blocks_to_proposal(block_num, 21);
-    BOOST_CHECK_EQUAL(govern.get_producers_group(), govern.make_producers_group(crowd_and_alice));
-    produce_block();
-} FC_LOG_AND_RETHROW()
-
 BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("Basic bw tests");
-    issuer_delegate_authority(_code);
 
     std::vector<uint8_t> max_proxies = {30, 10, 3, 1};
     int64_t frame_length = 30;
@@ -784,7 +594,6 @@ BOOST_FIXTURE_TEST_CASE(proxy_level_test, cyber_stake_tester) try {
 
 BOOST_FIXTURE_TEST_CASE(fee_parallel_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("agent_updates/fee_parallel_test");
-    issuer_delegate_authority(_code);
     int64_t stake_amount = 5000;
     int64_t reward_amount = stake_amount * 96; // x100 for balance
     BOOST_CHECK_EQUAL(success(), token.create(_issuer, token.from_amount(1234567890)));
@@ -834,7 +643,6 @@ BOOST_FIXTURE_TEST_CASE(fee_parallel_test, cyber_stake_tester) try {
 
 BOOST_FIXTURE_TEST_CASE(fee_series_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("agent_updates/fee_series_test");
-    issuer_delegate_authority(_code);
     int64_t stake_amount = 5000;
     int64_t reward_amount = stake_amount * 98; // x100 for balance
     int16_t fee_pct_b = 1000;
@@ -896,7 +704,6 @@ BOOST_FIXTURE_TEST_CASE(fee_series_test, cyber_stake_tester) try {
 
 BOOST_FIXTURE_TEST_CASE(no_fee_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("agent_updates/no_fee_test");
-    issuer_delegate_authority(_code);
     int64_t stake_amount = 5000;
     BOOST_CHECK_EQUAL(success(), token.create(_issuer, token.from_amount(1234567890)));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, token.from_amount(stake_amount), ""));
@@ -979,7 +786,6 @@ BOOST_AUTO_TEST_SUITE(delegation)
 
 BOOST_FIXTURE_TEST_CASE(_3x3_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("delegation/_3x3_test");
-    issuer_delegate_authority(_code);
     size_t max_proxy_level = 2;
     uint8_t agents_on_level = 3;
     int64_t stake_amount = 65610000;
@@ -1025,11 +831,8 @@ BOOST_FIXTURE_TEST_CASE(_3x3_test, cyber_stake_tester) try {
     produce_block();
 } FC_LOG_AND_RETHROW()
 
-//
-
 BOOST_FIXTURE_TEST_CASE(fuzz_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("delegation/fuzz_test");
-    issuer_delegate_authority(_code);
     size_t max_proxy_level = 3;
     uint8_t agents_on_level = 5;
     int64_t stake_amount = 50000;
@@ -1143,7 +946,6 @@ BOOST_AUTO_TEST_SUITE_END() // cyber_stake_tests
 BOOST_AUTO_TEST_SUITE(cyber_stake_tests_ext, * boost::unit_test::disabled()) 
 BOOST_FIXTURE_TEST_CASE(recursive_update_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("Recursive update test");
-    issuer_delegate_authority(_code);
     
     std::vector<uint8_t> max_proxies = {50, 20, 5, 1};
     int64_t frame_length = 30;

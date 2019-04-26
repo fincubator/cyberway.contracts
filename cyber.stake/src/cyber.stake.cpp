@@ -370,7 +370,7 @@ void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t 
 
 void stake::setproxyfee(name account, symbol_code token_code, int16_t fee) {
     eosio_assert(0 <= fee && fee <= config::_100percent, "fee must be between 0% and 100% (0-10000)");
-    check_staking(token_code);
+    staking_exists(token_code);
     modify_agent(account, token_code, [fee](auto& a) { a.fee = fee; } );
 }
 
@@ -386,7 +386,7 @@ void stake::setminstaked(name account, symbol_code token_code, int64_t min_own_s
 }
 
 void stake::setkey(name account, symbol_code token_code, public_key signing_key) {
-    check_staking(token_code);
+    staking_exists(token_code);
     modify_agent(account, token_code, [signing_key](auto& a) { a.signing_key = signing_key; } );
 }
 

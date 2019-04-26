@@ -1,6 +1,7 @@
 #pragma once
 #include "test_api_helper.hpp"
 #include "../common/config.hpp"
+#include "../cyber.stake/include/cyber.stake/config.hpp"
 
 using eosio::chain::symbol_code;
 
@@ -15,6 +16,10 @@ public:
     action_result create(account_name issuer, symbol token_symbol,
             std::vector<uint8_t> max_proxies, int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
             int64_t min_own_staked_for_election = 0) {
+        
+        _tester->delegate_authority(issuer, {_code}, cyber::config::token_name, N(issue), cyber::config::reward_name);
+        _tester->produce_block();
+        _tester->delegate_authority(issuer, {_code}, cyber::config::token_name, N(transfer), cyber::config::reward_name);
         return push(N(create), issuer, args()
             ("token_symbol", token_symbol)
             ("max_proxies", max_proxies)

@@ -76,7 +76,6 @@ struct structures {
         uint64_t id;
         symbol token_symbol;
         std::vector<uint8_t> max_proxies;
-        int64_t frame_length;
         int64_t payout_step_length;
         uint16_t payout_steps_num;
         int64_t min_own_staked_for_election = 0;
@@ -100,6 +99,7 @@ struct structures {
         uint64_t id;
         symbol_code token_code;
         int64_t total_staked;
+        time_point_sec last_reward;
         bool enabled = false;
         uint64_t primary_key()const { return id; }
     }; 
@@ -127,7 +127,7 @@ struct structures {
     using payouts = eosio::multi_index<"payout"_n, structures::payout, payout_id_index, payout_acc_index>;
     
     void update_stake_proxied(symbol_code token_code, name agent_name) {
-        ::update_stake_proxied(token_code.raw(), agent_name.value, int64_t(1), static_cast<int>(true));
+        ::update_stake_proxied(token_code.raw(), agent_name.value, static_cast<int>(true));
     }
     
     void send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode = false);
@@ -136,12 +136,12 @@ struct structures {
     //return: share
     int64_t delegate_traversal(symbol_code token_code, agents_idx_t& agents_idx, grants_idx_t& grants_idx, name agent_name, int64_t amount, bool refill = false);
     
-    agents_idx_t::const_iterator get_agent_itr(symbol_code token_code, agents_idx_t& agents_idx, name agent_name, int16_t proxy_level_for_emplaced = -1, agents* agents_table = nullptr, bool* emplaced = nullptr);
+    agents_idx_t::const_iterator get_agent_itr(symbol_code token_code, agents_idx_t& agents_idx, name agent_name);
+    void emplace_agent(name account, agents& agents_table, const structures::param& param, name ram_payer);
     void add_proxy(symbol_code token_code, grants& grants_table, const structures::agent& grantor_as_agent, const structures::agent& agent, 
         int16_t pct, int64_t share, int16_t break_fee = -1, int64_t break_min_own_staked = -1);
 
     void change_balance(name account, asset quantity);
-    void update_stats(const structures::stat& stat_arg, name payer = name());
     
     static inline void staking_exists(symbol_code token_code) {
         params params_table(table_owner, table_owner.value);
@@ -156,6 +156,15 @@ struct structures {
         auto agent = get_agent_itr(token_code, agents_idx, account);
         agents_idx.modify(agent, name(), f);
     }
+    
+    template<typename Lambda>
+    void modify_stat(symbol_code token_code, Lambda f) {
+        stats stats_table(table_owner, table_owner.value);
+        auto stat = stats_table.find(token_code.raw());
+        eosio_assert(stat != stats_table.end(), "stat doesn't exist");
+        stats_table.modify(stat, name(), f);
+    }
+    
     static void check_grant_terms(const structures::agent& agent, int16_t break_fee, int64_t break_min_own_staked);
 
 public:
@@ -200,16 +209,18 @@ public:
     using contract::contract;
 
     [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-        int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
+        int64_t payout_step_length, uint16_t payout_steps_num,
         int64_t min_own_staked_for_election);
         
     [[eosio::action]] void enable(symbol token_symbol);
+    
+    [[eosio::action]] void open(name owner, symbol_code token_code, std::optional<name> ram_payer);
 
     [[eosio::action]] void delegate(name grantor_name, name agent_name, asset quantity);
     
     [[eosio::action]] void setgrntterms(name grantor_name, name agent_name, symbol_code token_code, 
         int16_t pct, int16_t break_fee, int64_t break_min_own_staked);
-    [[eosio::action]] void recall     (name grantor_name, name agent_name, symbol_code token_code, int16_t pct);
+    [[eosio::action]] void recall(name grantor_name, name agent_name, symbol_code token_code, int16_t pct);
     
     [[eosio::action]] void withdraw(name account, asset quantity);
     [[eosio::action]] void claim(name account, symbol_code token_code);

@@ -18,10 +18,17 @@
             "fields": [
                 { "type": "symbol",                 "name": "token_symbol" },
                 { "type": "uint8[]",                "name": "max_proxies"  },
-                { "type": "int64",                  "name": "frame_length"  },
                 { "type": "int64",                  "name": "payout_step_length"  },
                 { "type": "uint16",                 "name": "payout_steps_num"  },
                 { "type": "int64",                  "name": "min_own_staked_for_election"  }
+            ]
+        },{
+            "name": "open_args",
+            "base": "",
+            "fields": [
+                { "type": "name",                   "name": "owner" },
+                { "type": "symbol_code",            "name": "token_code" },
+                { "type": "name?",                  "name": "ram_payer" }
             ]
         },{
             "name": "enable_args",
@@ -107,6 +114,10 @@
         {
             "name": "create",
             "type": "create_args",
+            "ricardian_contract": ""
+        },{
+            "name": "open",
+            "type": "open_args",
             "ricardian_contract": ""
         },{
             "name": "enable",

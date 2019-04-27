@@ -14,7 +14,7 @@ public:
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol,
-            std::vector<uint8_t> max_proxies, int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
+            std::vector<uint8_t> max_proxies, int64_t payout_step_length, uint16_t payout_steps_num,
             int64_t min_own_staked_for_election = 0) {
         
         _tester->delegate_authority(issuer, {_code}, cyber::config::token_name, N(issue), cyber::config::reward_name);
@@ -23,11 +23,16 @@ public:
         return push(N(create), issuer, args()
             ("token_symbol", token_symbol)
             ("max_proxies", max_proxies)
-            ("frame_length", frame_length)
             ("payout_step_length", payout_step_length)
             ("payout_steps_num", payout_steps_num)
             ("min_own_staked_for_election", min_own_staked_for_election)
         );
+    }
+    
+    action_result open(account_name owner, symbol_code token_code, account_name ram_payer = account_name(0)) {
+        return ram_payer ? 
+            push(N(open), ram_payer, args()("owner", owner)("token_code", token_code)("ram_payer", ram_payer)) : 
+            push(N(open), owner,     args()("owner", owner)("token_code", token_code));
     }
     
     action_result enable(account_name issuer, symbol token_symbol) {
@@ -132,8 +137,12 @@ public:
         );
     }
     
-    action_result register_candidate(account_name account, symbol_code token_code) {
-        
+    action_result register_candidate(account_name account, symbol_code token_code, bool need_to_open = true) {
+        if (need_to_open) {
+            auto ret = open(account, token_code);
+            if(ret != base_tester::success())
+                return ret;
+        }
         auto ret = setproxylvl(account, token_code, 0);
         if(ret != base_tester::success())
             return ret;
@@ -200,10 +209,11 @@ public:
         return variant();
     }
     
-    variant make_stats(symbol token_symbol, int64_t total_staked, bool enabled = false) {
+    variant make_stats(symbol token_symbol, int64_t total_staked, bool enabled = false, time_point_sec last_reward = time_point_sec()) {
         return mvo()
             ("token_code", token_symbol.to_symbol_code())
             ("total_staked", total_staked)
+            ("last_reward", last_reward)
             ("enabled", enabled);
     }
 };

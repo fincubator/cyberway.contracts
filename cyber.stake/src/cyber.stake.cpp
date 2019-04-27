@@ -168,7 +168,7 @@ void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_c
         eosio_assert(pct_sum <= config::_100percent, "too high pct value\n");
     }
     if (!agent_found && pct) {
-        auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name, param.max_proxies.size(), &agents_table);
+        auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);
         eosio_assert(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
         update_stake_proxied(token_code, agent_name);
         auto agent = get_agent_itr(token_code, agents_idx, agent_name);
@@ -191,8 +191,11 @@ void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
     
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
-    auto agent = get_agent_itr(token_code, agents_idx, account, param.max_proxies.size(), &agents_table);
-    
+    auto agent = agents_idx.find(std::make_tuple(token_code, account));
+    if (agent == agents_idx.end()) {
+        emplace_agent(account, agents_table, param, from);
+        agent = agents_idx.find(std::make_tuple(token_code, account));
+    }
     update_stake_proxied(token_code, account);
 
     grants grants_table(table_owner, table_owner.value);
@@ -200,11 +203,7 @@ void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
     
     auto share = delegate_traversal(token_code, agents_idx, grants_idx, account, quantity.amount, true);
     agents_idx.modify(agent, name(), [&](auto& a) { a.own_share += share; });
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = quantity.amount
-    }, from);
+    modify_stat(token_code, [&](auto& s) { s.total_staked += quantity.amount; });
 }
 
 void stake::claim(name account, symbol_code token_code) {
@@ -301,31 +300,7 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
         a.shares_sum += shares_diff;
         a.own_share += shares_diff;
     });
-    
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = balance_diff
-    });
-}
- 
-void stake::update_stats(const structures::stat& stat_arg, name payer) {
-    stats stats_table(table_owner, table_owner.value);
-    auto stat = stats_table.find(stat_arg.token_code.raw());
-
-    if (stat == stats_table.end() && payer != name()) {
-        eosio_assert(stat_arg.total_staked >= 0, "SYSTEM: incorrect total_staked");
-        stats_table.emplace(payer, [&](auto& s) { s = stat_arg; s.id = stat_arg.token_code.raw(); });
-    }
-    else if (stat != stats_table.end()) {
-        stats_table.modify(stat, name(), [&](auto& s) {
-            s.total_staked += stat_arg.total_staked;
-            s.enabled = s.enabled || stat_arg.enabled;
-        });
-    }
-    else {
-        eosio_assert(false, "stats doesn't exist");
-    }
+    modify_stat(token_code, [&](auto& s) { s.total_staked += balance_diff; });
 }
 
 void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode) {
@@ -399,11 +374,10 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     eosio_assert(level <= param.max_proxies.size(), "level too high");
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
-    bool emplaced = false;
-    auto agent = get_agent_itr(token_code, agents_idx, account, level, &agents_table, &emplaced);
+    auto agent = get_agent_itr(token_code, agents_idx, account);
     eosio_assert(level || agent->min_own_staked >= param.min_own_staked_for_election, 
             "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
-    eosio_assert(emplaced || (level != agent->proxy_level), "proxy level has not been changed");
+    eosio_assert(level != agent->proxy_level, "proxy level has not been changed");
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
     uint8_t proxies_num = 0;
@@ -415,85 +389,87 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     eosio_assert(level || !proxies_num, "can't set an ultimate level because the user has a proxy");
     eosio_assert(!level || proxies_num <= param.max_proxies[level - 1], "can't set proxy level, user has too many proxies");
 
-    if(!emplaced) {
-        agents_idx.modify(agent, name(), [&](auto& a) { 
-            a.proxy_level = level;
-            a.votes = level ? -1 : a.balance;
-        });
-    }
+    agents_idx.modify(agent, name(), [&](auto& a) { 
+        a.proxy_level = level;
+        a.votes = level ? -1 : a.balance;
+    });
 } 
  
 void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-    int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
+    int64_t payout_step_length, uint16_t payout_steps_num,
     int64_t min_own_staked_for_election)
 {
-    eosio::print("create stake for ", token_symbol.code(), "\n");
+    auto token_code = token_symbol.code();
+    eosio::print("create stake for ", token_code, "\n");
     eosio_assert(max_proxies.size(), "no proxy levels are specified");
     eosio_assert(max_proxies.size() < std::numeric_limits<uint8_t>::max(), "too many proxy levels");
     if (max_proxies.size() > 1)
         for (size_t i = 1; i < max_proxies.size(); i++) {
             eosio_assert(max_proxies[i - 1] >= max_proxies[i], "incorrect proxy levels");
         }
-    eosio_assert(frame_length > 0, "incorrect frame_length");
     eosio_assert(payout_step_length > 0, "incorrect payout_step_length");
     eosio_assert(min_own_staked_for_election >= 0, "incorrect min_own_staked_for_election");
-    auto issuer = eosio::token::get_issuer(config::token_name, token_symbol.code());
+    auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
     params params_table(table_owner, table_owner.value);
-    eosio_assert(params_table.find(token_symbol.code().raw()) == params_table.end(), "already exists");
+    eosio_assert(params_table.find(token_code.raw()) == params_table.end(), "already exists");
     
     params_table.emplace(issuer, [&](auto& p) { p = {
-        .id = token_symbol.code().raw(),
+        .id = token_code.raw(),
         .token_symbol = token_symbol,
         .max_proxies = max_proxies,
-        .frame_length = frame_length,
         .payout_step_length = payout_step_length,
         .payout_steps_num = payout_steps_num,
         .min_own_staked_for_election = min_own_staked_for_election
-        };});
+    };});
+        
+    stats stats_table(table_owner, table_owner.value);
+    eosio_assert(stats_table.find(token_code.raw()) == stats_table.end(), "SYSTEM: already exists");
+    stats_table.emplace(issuer, [&](auto& s) { s = {
+        .id = token_code.raw(),
+        .token_code = token_code,
+        .total_staked = 0
+    };});    
 }
 
 void stake::enable(symbol token_symbol) {
     auto token_code = token_symbol.code();
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
-    params params_table(table_owner, table_owner.value);
-    params_table.get(token_code.raw(), "no staking for token");
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = 0,
-        .enabled = true
-    }, issuer);
+    modify_stat(token_code, [&](auto& s) {
+        eosio_assert(!s.enabled, "already enabled");
+        s.enabled = true;
+    });
 }
 
-stake::agents_idx_t::const_iterator stake::get_agent_itr(symbol_code token_code, stake::agents_idx_t& agents_idx, name agent_name, int16_t proxy_level_for_emplaced, agents* agents_table, bool* emplaced) {
-    auto key = std::make_tuple(token_code, agent_name);
-    auto agent = agents_idx.find(key);
+void stake::open(name owner, symbol_code token_code, std::optional<name> ram_payer = std::nullopt) {
     
-    if (emplaced)
-        *emplaced = false;
+    auto actual_ram_payer = ram_payer.value_or(owner);
+    require_auth(actual_ram_payer);
+    
+    params params_table(table_owner, table_owner.value);
+    const auto& param = params_table.get(token_code.raw(), "no staking for token");
+    agents agents_table(table_owner, table_owner.value);
+    auto agents_idx = agents_table.get_index<"bykey"_n>();
+    eosio_assert(agents_idx.find(std::make_tuple(token_code, owner)) == agents_idx.end(), "agent already exists");
+    emplace_agent(owner, agents_table, param, actual_ram_payer);
+}
 
-    if(proxy_level_for_emplaced < 0) {
-        eosio_assert(agent != agents_idx.end(), ("agent " + agent_name.to_string() + " doesn't exist").c_str());
-    }
-    else if(agent == agents_idx.end()) {
+stake::agents_idx_t::const_iterator stake::get_agent_itr(symbol_code token_code, stake::agents_idx_t& agents_idx, name agent_name) {
+    auto ret = agents_idx.find(std::make_tuple(token_code, agent_name));
+    eosio_assert(ret != agents_idx.end(), ("agent " + agent_name.to_string() + " doesn't exist").c_str());
+    return ret;
+}
 
-        eosio_assert(static_cast<bool>(agents_table), "SYSTEM: agents_table can't be null");
-        (*agents_table).emplace(agent_name, [&](auto& a) { a = {
-            .id = agents_table->available_primary_key(),
-            .token_code = token_code,
-            .account = agent_name,
-            .proxy_level = static_cast<uint8_t>(proxy_level_for_emplaced),
-            .votes = proxy_level_for_emplaced ? -1 : 0,
-            .last_proxied_update = time_point_sec(::now())
-        };});
-        
-        agent = agents_idx.find(key);
-        if (emplaced)
-            *emplaced = true;
-    }
-    return agent;
+void stake::emplace_agent(name account, agents& agents_table, const structures::param& param, name ram_payer) {
+    agents_table.emplace(ram_payer, [&](auto& a) { a = {
+        .id = agents_table.available_primary_key(),
+        .token_code = param.token_symbol.code(),
+        .account = account,
+        .proxy_level = static_cast<uint8_t>(param.max_proxies.size()),
+        .votes = -1,
+        .last_proxied_update = time_point_sec(::now())
+    };});
 }
 
 void stake::updatefunds(name account, symbol_code token_code) {
@@ -538,21 +514,20 @@ void stake::reward(name account, asset quantity) {
             a.own_share = quantity.amount;
         });
     }
-    update_stats(structures::stat {
-        .id = 0,
-        .token_code = token_code,
-        .total_staked = quantity.amount
-    }, issuer);
+    modify_stat(token_code, [&](auto& s) {
+        s.total_staked += quantity.amount;
+        s.last_reward = time_point_sec(::now());
+    });
     
     INLINE_ACTION_SENDER(eosio::token, issue)(config::token_name, {issuer, config::reward_name}, {issuer, quantity, ""});
     INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {issuer, config::reward_name},
-        {issuer, _self, quantity, config::reward_memo}); 
+        {issuer, _self, quantity, config::reward_memo});
 }
 
 } /// namespace cyber
 
 DISPATCH_WITH_TRANSFER(cyber::stake, cyber::config::token_name, on_transfer,
-    (create)(enable)(delegate)(setgrntterms)(recall)(withdraw)(claim)(cancelwd)
+    (create)(enable)(open)(delegate)(setgrntterms)(recall)(withdraw)(claim)(cancelwd)
     (setproxylvl)(setproxyfee)(setminstaked)(setkey)
     (updatefunds)(reward)
 )

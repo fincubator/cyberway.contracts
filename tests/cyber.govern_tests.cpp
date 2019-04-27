@@ -54,7 +54,7 @@ public:
         BOOST_TEST_MESSAGE("--- creating token and stake"); 
         BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(max_supply_amount, token._symbol)));
         BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, 
-            std::vector<uint8_t>{30, 10, 3, 1}, cfg::balances_update_window, 7 * 24 * 60 * 60, 52));
+            std::vector<uint8_t>{30, 10, 3, 1}, 7 * 24 * 60 * 60, 52));
             
         BOOST_TEST_MESSAGE("--- installing governance contract");
         install_contract(govern_account_name, contracts::govern_wasm(), contracts::govern_abi());

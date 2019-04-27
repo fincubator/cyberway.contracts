@@ -396,7 +396,7 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
 } 
  
 void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-    int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
+    int64_t payout_step_length, uint16_t payout_steps_num,
     int64_t min_own_staked_for_election)
 {
     auto token_code = token_symbol.code();
@@ -407,7 +407,6 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
         for (size_t i = 1; i < max_proxies.size(); i++) {
             eosio_assert(max_proxies[i - 1] >= max_proxies[i], "incorrect proxy levels");
         }
-    eosio_assert(frame_length > 0, "incorrect frame_length");
     eosio_assert(payout_step_length > 0, "incorrect payout_step_length");
     eosio_assert(min_own_staked_for_election >= 0, "incorrect min_own_staked_for_election");
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
@@ -419,7 +418,6 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
         .id = token_code.raw(),
         .token_symbol = token_symbol,
         .max_proxies = max_proxies,
-        .frame_length = frame_length,
         .payout_step_length = payout_step_length,
         .payout_steps_num = payout_steps_num,
         .min_own_staked_for_election = min_own_staked_for_election
@@ -516,7 +514,10 @@ void stake::reward(name account, asset quantity) {
             a.own_share = quantity.amount;
         });
     }
-    modify_stat(token_code, [&](auto& s) { s.total_staked += quantity.amount; });
+    modify_stat(token_code, [&](auto& s) {
+        s.total_staked += quantity.amount;
+        s.last_reward = time_point_sec(::now());
+    });
     
     INLINE_ACTION_SENDER(eosio::token, issue)(config::token_name, {issuer, config::reward_name}, {issuer, quantity, ""});
     INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {issuer, config::reward_name},

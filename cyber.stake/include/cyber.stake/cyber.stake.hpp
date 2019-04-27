@@ -76,7 +76,6 @@ struct structures {
         uint64_t id;
         symbol token_symbol;
         std::vector<uint8_t> max_proxies;
-        int64_t frame_length;
         int64_t payout_step_length;
         uint16_t payout_steps_num;
         int64_t min_own_staked_for_election = 0;
@@ -100,6 +99,7 @@ struct structures {
         uint64_t id;
         symbol_code token_code;
         int64_t total_staked;
+        time_point_sec last_reward;
         bool enabled = false;
         uint64_t primary_key()const { return id; }
     }; 
@@ -127,7 +127,7 @@ struct structures {
     using payouts = eosio::multi_index<"payout"_n, structures::payout, payout_id_index, payout_acc_index>;
     
     void update_stake_proxied(symbol_code token_code, name agent_name) {
-        ::update_stake_proxied(token_code.raw(), agent_name.value, int64_t(1), static_cast<int>(true));
+        ::update_stake_proxied(token_code.raw(), agent_name.value, static_cast<int>(true));
     }
     
     void send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode = false);
@@ -209,7 +209,7 @@ public:
     using contract::contract;
 
     [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, 
-        int64_t frame_length, int64_t payout_step_length, uint16_t payout_steps_num,
+        int64_t payout_step_length, uint16_t payout_steps_num,
         int64_t min_own_staked_for_election);
         
     [[eosio::action]] void enable(symbol token_symbol);

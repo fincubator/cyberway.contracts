@@ -337,6 +337,7 @@ public:
          ("target_block_cpu_usage_pct", 10 + n )
          ("max_transaction_cpu_usage", 1000000 + n )
          ("min_transaction_cpu_usage", 100 + n )
+         ("min_transaction_ram_usage", 1024 + n )
          ("max_transaction_lifetime", 3600 + n)
          ("deferred_trx_expiration_window", 600 + n)
          ("max_transaction_delay", 10*86400+n)

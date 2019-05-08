@@ -86,6 +86,10 @@
                     "type": "uint32"
                 },
                 {
+                    "name": "min_transaction_ram_usage",
+                    "type": "uint64"
+                },
+                {
                     "name": "max_transaction_lifetime",
                     "type": "uint32"
                 },

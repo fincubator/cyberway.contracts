@@ -12,6 +12,29 @@ public:
     cyber_stake_api(golos_tester* tester, name code)
     :   base_contract_api(tester, code){}
 
+
+    action_result push(action_name name, account_name signer, const variant_object& data) {
+        try {
+            signed_transaction trx;
+            vector<permission_level> auths;
+
+            auths.push_back( permission_level{signer, config::active_name} );
+
+            trx.actions.emplace_back( _tester->get_action( _code, name, auths, data ) );
+            _tester->set_transaction_headers( trx, _tester->DEFAULT_EXPIRATION_DELTA, 0 );
+            for (const auto& auth : auths) {
+                trx.sign( _tester->get_private_key( auth.actor, auth.permission.to_string() ), _tester->control->get_chain_id() );
+            }
+
+            _tester->push_transaction(trx, fc::time_point::maximum(), 0, 0); // not-explicit bw usage
+
+        } catch (const fc::exception& ex) {
+            edump((ex.to_detail_string()));
+            return _tester->error(ex.top_message());
+        }
+        return _tester->success();
+    }
+
     ////actions
     action_result create(account_name issuer, symbol token_symbol,
             std::vector<uint8_t> max_proxies, int64_t payout_step_length, uint16_t payout_steps_num,

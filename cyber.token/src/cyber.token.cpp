@@ -5,6 +5,7 @@
 
 #include <eosiolib/event.hpp>
 #include <cyber.token/cyber.token.hpp>
+#include <set>
 
 namespace eosio {
 
@@ -103,6 +104,8 @@ void token::transfer( name    from,
                       asset   quantity,
                       string  memo )
 {
+    require_recipient( from );
+    require_recipient( to );
     do_transfer(from, to, quantity, memo);
 }
 
@@ -115,10 +118,10 @@ void token::payment( name    from,
 }
 
 void token::do_transfer( name  from,
-                              name  to,
-                              const asset& quantity,
-                              const string& memo,
-                              bool payment )
+                         name  to,
+                         const asset& quantity,
+                         const string& memo,
+                         bool payment )
 {
     if (!payment)
         eosio_assert( from != to, "cannot transfer to self" );
@@ -138,12 +141,8 @@ void token::do_transfer( name  from,
     sub_balance( from, quantity );
     if (payment)
         add_payment( to, quantity, payer );
-    else {
-        require_recipient( from );
-        require_recipient( to );
-
+    else
         add_balance( to, quantity, payer );
-    }
 }
 
 void token::sub_balance( name owner, asset value ) {
@@ -244,6 +243,19 @@ void token::claim( name owner, asset quantity )
    });
 }
 
+void token::bulktransfer(name from, vector<recipient> recipients)
+{
+    require_recipient(from);
+    std::set<name> require_recipients;
+    for (auto recipient_obj : recipients) {
+        do_transfer(from, recipient_obj.to, recipient_obj.quantity, recipient_obj.memo);
+
+        auto result = require_recipients.insert(recipient_obj.to);
+        if (result.second)
+            require_recipient(recipient_obj.to);
+    }
+}
+
 } /// namespace eosio
 
-EOSIO_DISPATCH( eosio::token, (create)(issue)(transfer)(payment)(claim)(open)(close)(retire) )
+EOSIO_DISPATCH( eosio::token, (create)(issue)(transfer)(bulktransfer)(payment)(claim)(open)(close)(retire) )

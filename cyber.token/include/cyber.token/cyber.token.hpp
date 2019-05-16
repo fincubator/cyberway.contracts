@@ -8,6 +8,7 @@
 #include <eosiolib/eosio.hpp>
 
 #include <string>
+#include <vector>
 
 namespace eosiosystem {
    class system_contract;
@@ -16,6 +17,7 @@ namespace eosiosystem {
 namespace eosio {
 
    using std::string;
+   using std::vector;
 
    class [[eosio::contract("cyber.token")]] token : public contract {
       public:
@@ -36,6 +38,15 @@ namespace eosio {
                         name    to,
                         asset   quantity,
                         string  memo );
+
+         struct recipient {
+             name    to;
+             asset   quantity;
+             string  memo;
+         };
+
+        [[eosio::action]]
+        void bulktransfer( name from, vector<recipient> recipients );
 
         [[eosio::action]]
         void payment( name    from,

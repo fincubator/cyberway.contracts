@@ -8,10 +8,18 @@ using eosio::chain::symbol_code;
 namespace eosio { namespace testing {
 
 struct cyber_stake_api: base_contract_api {
+    bool verbose;
+    uint32_t billed_cpu_time_us = 0;
+    uint64_t billed_ram_bytes = 0;
 public:
-    cyber_stake_api(golos_tester* tester, name code)
-    :   base_contract_api(tester, code){}
-
+    cyber_stake_api(golos_tester* tester, name code, bool verbose_ = true)
+    :   base_contract_api(tester, code), verbose(verbose_){}
+    
+    void set_verbose(bool verbose_) { verbose = verbose_; };
+    void set_billed(uint32_t cpu_time_us, uint64_t ram_bytes) {
+        billed_cpu_time_us = cpu_time_us;
+        billed_ram_bytes   = ram_bytes;
+    }
 
     action_result push(action_name name, account_name signer, const variant_object& data) {
         try {
@@ -26,7 +34,7 @@ public:
                 trx.sign( _tester->get_private_key( auth.actor, auth.permission.to_string() ), _tester->control->get_chain_id() );
             }
 
-            _tester->push_transaction(trx, fc::time_point::maximum(), 0, 0); // not-explicit bw usage
+            _tester->push_transaction(trx, fc::time_point::maximum(), billed_cpu_time_us, billed_ram_bytes);
 
         } catch (const fc::exception& ex) {
             edump((ex.to_detail_string()));
@@ -65,7 +73,9 @@ public:
     }
     
     action_result delegate(account_name grantor_name, account_name agent_name, asset quantity) {
-        BOOST_TEST_MESSAGE("--- " << grantor_name <<  " delegates " << quantity <<  " to " << agent_name);
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " delegates " << quantity <<  " to " << agent_name);
+        }
         return push(N(delegate), grantor_name, args()
             ("grantor_name", grantor_name)
             ("agent_name", agent_name)
@@ -75,7 +85,9 @@ public:
     
     action_result setgrntterms(account_name grantor_name, account_name agent_name, symbol_code token_code,
         int16_t pct, int16_t break_fee = cyber::config::_100percent, int64_t break_min_own_staked = 0) {
-        BOOST_TEST_MESSAGE("--- " << grantor_name <<  " sets grant terms for " << agent_name);
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " sets grant terms for " << agent_name);
+        }
         return push(N(setgrntterms), grantor_name, args()
             ("grantor_name", grantor_name)
             ("agent_name", agent_name)
@@ -87,8 +99,10 @@ public:
     }
     
     action_result recall(account_name grantor_name, account_name agent_name, symbol_code token_code, int16_t pct) {
-        BOOST_TEST_MESSAGE("--- " << grantor_name <<  " recalls " << pct 
-            <<  "(" << token_code << ")" << " from " << agent_name);
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " recalls " << pct 
+                <<  "(" << token_code << ")" << " from " << agent_name);
+        }
         return push(N(recall), grantor_name, args()
             ("grantor_name", grantor_name)
             ("agent_name", agent_name)
@@ -98,7 +112,9 @@ public:
     }
     
     action_result withdraw(account_name account, asset quantity) {
-        BOOST_TEST_MESSAGE("--- " << account <<  " withdraws " << quantity);
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << account <<  " withdraws " << quantity);
+        }
         return push(N(withdraw), account, args()
             ("account", account)
             ("quantity", quantity)
@@ -106,7 +122,9 @@ public:
     }
     
     action_result cancelwd(account_name account, asset quantity) {
-        BOOST_TEST_MESSAGE("--- " << account <<  " cancels withdraw " << quantity);
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << account <<  " cancels withdraw " << quantity);
+        }
         return push(N(cancelwd), account, args()
             ("account", account)
             ("quantity", quantity)
@@ -114,7 +132,9 @@ public:
     }
     
     action_result claim(account_name account, symbol_code token_code) {
-        BOOST_TEST_MESSAGE("--- " << account <<  " claims " << symbol(token_code << 8).name());
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << account <<  " claims " << symbol(token_code << 8).name());
+        }
         return push(N(claim), account, args()
             ("account", account)
             ("token_code", token_code)
@@ -122,7 +142,7 @@ public:
     }
     
     action_result setproxylvl(account_name account, symbol_code token_code, uint8_t level, bool mssg = true) {
-        if (mssg) {
+        if (mssg && verbose) {
             BOOST_TEST_MESSAGE("--- " << account <<  " sets proxy level");
         }
         return push(N(setproxylvl), account, args()

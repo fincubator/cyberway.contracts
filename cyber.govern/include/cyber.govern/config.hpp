@@ -28,7 +28,7 @@ static constexpr auto emission_max_arg = 75 * _1percent;
 //linear interpolation between these two points
 
 static constexpr auto block_reward_pct     = 10 * _1percent;
-static constexpr auto workers_reward_pct   = 20 * _1percent; // not including block reward
+static constexpr auto workers_reward_pct   = 20 * _1percent; // not including block reward //TODO: 22 * _1percent
 
 }
 

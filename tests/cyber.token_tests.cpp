@@ -26,7 +26,8 @@ FC_REFLECT(recipient, (to)(quantity)(memo))
 class cyber_token_tester : public tester {
 public:
 
-   cyber_token_tester() {
+   cyber_token_tester()
+   : abi_ser(abi_serializer::DBMode) {
       produce_blocks( 2 );
 
       create_accounts( { N(alice), N(bob), N(carol), N(cyber.token) } );

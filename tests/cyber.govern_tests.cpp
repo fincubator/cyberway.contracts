@@ -11,7 +11,6 @@
 namespace cfg = cyber::config;
 using eosio::chain::config::stake_account_name;
 using eosio::chain::config::govern_account_name;
-using eosio::chain::config::default_virtual_ram_limit;
 using namespace eosio::testing;
 using namespace eosio::chain;
 using namespace eosio::chain::int_arithmetic;

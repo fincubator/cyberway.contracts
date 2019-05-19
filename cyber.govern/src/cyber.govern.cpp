@@ -56,7 +56,7 @@ void govern::onblock(name producer) {
         s.pending_active_producers.clear();
     }
     
-    if (producer != config::internal_name) {
+    if (producer != config::internal_name && s.block_num != 1) {
         auto prod_itr = producers_table.find(producer.value);
         eosio_assert(prod_itr != producers_table.end(), "SYSTEM: producer does not exist");
         producers_table.modify(prod_itr, name(), [&](auto& a) {

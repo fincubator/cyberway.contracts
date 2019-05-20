@@ -246,7 +246,7 @@
                     "name": "primary",
                     "unique": "true",
                     "orders": [
-                        {"field": "balance.sym", "order": "asc"}
+                        {"field": "balance._sym", "order": "asc"}
                     ]
                 }
             ]
@@ -254,12 +254,13 @@
         {
             "name": "stat",
             "type": "currency_stats",
+            "scope_type": "symbol_code",
             "indexes": [
                 {
                     "name": "primary",
                     "unique": "true",
                     "orders": [
-                        {"field": "supply.sym", "order": "asc"}
+                        {"field": "supply._sym", "order": "asc"}
                     ]
                 }
             ]

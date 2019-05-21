@@ -155,10 +155,10 @@ vector<variant> golos_tester::get_all_chaindb_rows(name code, uint64_t scope, na
     return all;
 }
 
-void golos_tester::delegate_authority(account_name from, std::vector<account_name> to, 
+void golos_tester::delegate_authority(account_name from, std::vector<account_name> to,
         account_name code, action_name type, permission_name req,
         permission_name parent, permission_name prov) {
-            
+
     authority auth(1, {});
     for (auto u : to) {
         auth.accounts.emplace_back(permission_level_weight{.permission = {u, prov}, .weight = 1});

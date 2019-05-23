@@ -1,6 +1,5 @@
 #include "cyber.domain.hpp"
 #include <common/config.hpp>
-#include <cyber.system/cyber.system.hpp>
 #include <cyber.token/cyber.token.hpp>
 #include <eosiolib/eosio.hpp>
 #include <eosiolib/transaction.hpp>
@@ -13,7 +12,7 @@ namespace eosiosystem {
 
 // constants
 const uint32_t seconds_per_hour      = 60 * 60;
-// const uint32_t seconds_per_day       = 24 * seconds_per_hour;    // declared in eosio::system header…
+const uint32_t seconds_per_day       = 24 * seconds_per_hour;
 const uint32_t seconds_per_year      = 365 * seconds_per_day;   // note: it's 52*7=364 in eos
 
 // config

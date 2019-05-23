@@ -49,11 +49,12 @@ protected:
     std::map<account_name, abi_serializer> _abis;
 
 public:
-    golos_tester(name code, bool push_genesis = true): tester(base_tester::default_config(), push_genesis), _code(code), _chaindb(control->chaindb()) {
-        std::cout << "golos_tester()" << std::endl;
+    golos_tester(name code, bool push_genesis = true)
+    : tester(base_tester::default_config("_GOLOSTEST_"), push_genesis)
+    , _code(code)
+    , _chaindb(control->chaindb()) {
     }
     ~golos_tester() {
-        std::cout << "~golos_tester()" << std::endl;
     }
 
     void install_contract(account_name acc, const std::vector<uint8_t>& wasm, const std::vector<char>& abi, bool produce = true, const private_key_type* signer = nullptr);

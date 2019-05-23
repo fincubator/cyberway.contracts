@@ -2,6 +2,7 @@
 #include <eosiolib/action.hpp>
 #include <eosiolib/crypto.h>
 #include <eosiolib/eosio.hpp>
+#include <eosiolib/asset.hpp>
 #include <eosiolib/privileged.hpp>
 #include <eosiolib/producer_schedule.hpp>
 #include <eosiolib/singleton.hpp>
@@ -62,17 +63,38 @@ namespace cyber {
 
    class [[eosio::contract("cyber.bios")]] bios : public contract {
       struct [[eosio::table("state")]] state_info {
-         time_point_sec last_names_update;
+         time_point_sec last_close_bid;
       };
       using state_singleton = eosio::singleton<"biosstate"_n, state_info>;
-       
+
+      struct [[eosio::table, eosio::contract("cyber.bios")]] bid_refund {
+        name         bidder;
+        eosio::asset amount;
+
+        uint64_t primary_key()const { return bidder.value; }
+      };
+      typedef eosio::multi_index< "bidrefunds"_n, bid_refund > bid_refund_table;
+
+      struct [[eosio::table, eosio::contract("cyber.bios")]] name_bid {
+        name              newname;
+        name              high_bidder;
+        int64_t           high_bid = 0; ///< negative high_bid == closed auction waiting to be claimed
+        eosio::time_point last_bid_time;
+
+        uint64_t primary_key()const { return newname.value;                    }
+        uint64_t by_high_bid()const { return static_cast<uint64_t>(-high_bid); }
+      };
+      typedef eosio::multi_index< "namebids"_n, name_bid,
+                                  eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<name_bid, uint64_t, &name_bid::by_high_bid>  >
+                                > name_bid_table;
+
       public:
          using contract::contract;
          [[eosio::action]]
          void newaccount( name             creator,
                           name             name,
                           ignore<authority> owner,
-                          ignore<authority> active){}
+                          ignore<authority> active);
 
 
          [[eosio::action]]
@@ -150,6 +172,12 @@ namespace cyber {
             }
          }
 
+         [[eosio::action]]
+         void bidname( name bidder, name newname, eosio::asset bid );
+
+         [[eosio::action]]
+         void bidrefund( name bidder, name newname );
+
          struct [[eosio::table]] abi_hash {
             name              owner;
             capi_checksum256  hash;
@@ -161,6 +189,7 @@ namespace cyber {
          typedef eosio::multi_index< "abihash"_n, abi_hash > abi_hash_table;
          
          [[eosio::action]] void onblock(ignore<block_header> header);
+
    };
 
 } /// namespace cyber

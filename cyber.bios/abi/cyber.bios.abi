@@ -375,7 +375,24 @@
             "base": "",
             "fields": [
                 {"type": "uint64",         "name": "id"},
-                {"type": "time_point_sec", "name": "last_names_update"}
+                {"type": "time_point_sec", "name": "last_close_bid"}
+            ]
+        },
+        {
+            "name": "bidname",
+            "base": "",
+            "fields": [
+                {"type": "name",  "name": "bidder"},
+                {"type": "name",  "name": "newname"},
+                {"type": "asset", "name": "bid"}
+            ]
+        },
+        {
+            "name": "bidrefund",
+            "base": "",
+            "fields": [
+                {"type": "name",  "name": "bidder"},
+                {"type": "name",  "name": "newname"}
             ]
         }
     ],
@@ -440,6 +457,14 @@
         {
             "name": "requestbw",
             "type": "requestbw"
+        },
+        {
+            "name": "bidname",
+            "type": "bidname"
+        },
+        {
+            "name": "bidrefund",
+            "type": "bidrefund"
         }
     ],
     "tables": [

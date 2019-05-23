@@ -3,6 +3,7 @@ target_include_directories(cyber.bios.wasm
    PUBLIC
    ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.govern/include
    ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.stake/include
+   ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.token/include
    ${CMAKE_CURRENT_SOURCE_DIR}/include
    ${CMAKE_CURRENT_SOURCE_DIR}/..)
 

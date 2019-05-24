@@ -363,6 +363,7 @@ BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
     double ram_using_prop = 0.0001;
     double ram_capacity = config::default_min_virtual_limits[resource_limits::RAM] * config::default_account_usage_windows[resource_limits::RAM] / config::block_interval_ms;
     stake.set_billed(100, ram_capacity * ram_using_prop);
+    token.set_billed(100, ram_capacity * ram_using_prop);
 
     std::vector<uint8_t> max_proxies = {30, 10, 3, 1};
     int64_t frame_length = 30;
@@ -399,8 +400,18 @@ BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
 
     produce_block();
+
+    for (int i = 0; i < 3; ++i) {
+        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2));
+        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+        produce_block();
+    }
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2)));
-    stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 3, false);
+    for (int i = 0; i < 4; ++i) {
+        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 3, false));
+        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2, false));
+        produce_block();
+    }
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1)));
     produce_block();
     auto params = control->get_global_properties().configuration;

@@ -9,39 +9,13 @@ namespace eosio { namespace testing {
 
 struct cyber_stake_api: base_contract_api {
     bool verbose;
-    uint32_t billed_cpu_time_us = 0;
-    uint64_t billed_ram_bytes = 0;
+    uint32_t billed_cpu_time_us = base_tester::DEFAULT_BILLED_CPU_TIME_US;
+    uint64_t billed_ram_bytes = base_tester::DEFAULT_BILLED_RAM_BYTES;
 public:
     cyber_stake_api(golos_tester* tester, name code, bool verbose_ = true)
     :   base_contract_api(tester, code), verbose(verbose_){}
     
     void set_verbose(bool verbose_) { verbose = verbose_; };
-    void set_billed(uint32_t cpu_time_us, uint64_t ram_bytes) {
-        billed_cpu_time_us = cpu_time_us;
-        billed_ram_bytes   = ram_bytes;
-    }
-
-    action_result push(action_name name, account_name signer, const variant_object& data) {
-        try {
-            signed_transaction trx;
-            vector<permission_level> auths;
-
-            auths.push_back( permission_level{signer, config::active_name} );
-
-            trx.actions.emplace_back( _tester->get_action( _code, name, auths, data ) );
-            _tester->set_transaction_headers( trx, _tester->DEFAULT_EXPIRATION_DELTA, 0 );
-            for (const auto& auth : auths) {
-                trx.sign( _tester->get_private_key( auth.actor, auth.permission.to_string() ), _tester->control->get_chain_id() );
-            }
-
-            _tester->push_transaction(trx, fc::time_point::maximum(), billed_cpu_time_us, billed_ram_bytes);
-
-        } catch (const fc::exception& ex) {
-            edump((ex.to_detail_string()));
-            return _tester->error(ex.top_message());
-        }
-        return _tester->success();
-    }
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol,

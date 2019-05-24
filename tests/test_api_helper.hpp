@@ -23,14 +23,14 @@ inline account_name user_name(size_t n) {
 }; 
 
 struct base_contract_api {
+private:
+    uint32_t billed_cpu_time_us = base_tester::DEFAULT_BILLED_CPU_TIME_US;
+    uint64_t billed_ram_bytes = base_tester::DEFAULT_BILLED_RAM_BYTES;
+public:
     golos_tester* _tester;
     name _code;
 
     base_contract_api(golos_tester* tester, name code): _tester(tester), _code(code) {}
-
-    action_result push(action_name name, account_name signer, const variant_object& data) {
-        return _tester->push_action(_code, name, signer, data);
-    }
 
     base_tester::action_result push_msig(action_name name, std::vector<permission_level> perms, std::vector<account_name> signers,
         const variant_object& data
@@ -44,6 +44,33 @@ struct base_contract_api {
 
     virtual mvo args() {
         return mvo();
+    }
+
+    void set_billed(uint32_t cpu_time_us, uint64_t ram_bytes) {
+        billed_cpu_time_us = cpu_time_us;
+        billed_ram_bytes   = ram_bytes;
+    }
+
+    action_result push(action_name name, account_name signer, const variant_object& data) {
+        try {
+            signed_transaction trx;
+            vector<permission_level> auths;
+
+            auths.push_back( permission_level{signer, config::active_name} );
+
+            trx.actions.emplace_back( _tester->get_action( _code, name, auths, data ) );
+            _tester->set_transaction_headers( trx, _tester->DEFAULT_EXPIRATION_DELTA, 0 );
+            for (const auto& auth : auths) {
+                trx.sign( _tester->get_private_key( auth.actor, auth.permission.to_string() ), _tester->control->get_chain_id() );
+            }
+
+            _tester->push_transaction(trx, fc::time_point::maximum(), billed_cpu_time_us, billed_ram_bytes);
+
+        } catch (const fc::exception& ex) {
+            edump((ex.to_detail_string()));
+            return _tester->error(ex.top_message());
+        }
+        return _tester->success();
     }
 
 };

@@ -144,6 +144,8 @@ transaction cyber_msig_tester::reqauth( account_name from, const vector<permissi
       ("ref_block_prefix", 3)
       ("max_net_usage_words", 0)
       ("max_cpu_usage_ms", 0)
+      ("max_ram_kbytes", 0)
+      ("max_storage_kbytes", 0)
       ("delay_sec", 0)
       ("actions", fc::variants({
             fc::mutable_variant_object()
@@ -310,6 +312,8 @@ BOOST_FIXTURE_TEST_CASE( big_transaction, cyber_msig_tester ) try {
       ("ref_block_prefix", 3)
       ("max_net_usage_words", 0)
       ("max_cpu_usage_ms", 0)
+      ("max_ram_kbytes", 0)
+      ("max_storage_kbytes", 0)
       ("delay_sec", 0)
       ("actions", fc::variants({
             fc::mutable_variant_object()

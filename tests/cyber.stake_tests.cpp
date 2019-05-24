@@ -347,7 +347,7 @@ BOOST_FIXTURE_TEST_CASE(open_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(err.agent_exists(), stake.open(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
-    BOOST_CHECK(err.is_costs_too_much_mssg(stake.open(_carol, token._symbol.to_symbol_code())));
+    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.open(_carol, token._symbol.to_symbol_code())));
     BOOST_CHECK_EQUAL(err.no_agent(), stake.delegate(_alice, _carol, stake_u));
     BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
     produce_block();
@@ -399,19 +399,20 @@ BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.transfer(_issuer, _code, stake_w, "whale"));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
 
-    produce_block();
-
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 2; ++i) {
+        produce_block();
         BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2));
         BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
-        produce_block();
     }
-    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2)));
-    for (int i = 0; i < 4; ++i) {
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 3));
+    produce_block();
+    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1)));
+    for (int i = 0; i < 3; ++i) {
         BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 3, false));
         BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2, false));
         produce_block();
     }
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 3, false));
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1)));
     produce_block();
     auto params = control->get_global_properties().configuration;

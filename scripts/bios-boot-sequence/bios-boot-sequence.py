@@ -312,13 +312,13 @@ def stepStartBoot():
     sleep(9)
 def stepInstallSystemContracts():
     updateAuthority('cyber', 'reward', 'active', [args.public_key], [])
-    retry(args.cleos + 'set contract cyber.domain ' + args.contracts_dir + 'cyber.domain/')
     if not args.golos_genesis:
+        retry(args.cleos + 'set contract cyber.domain ' + args.contracts_dir + 'cyber.domain/')
         retry(args.cleos + 'set contract cyber.token ' + args.contracts_dir + 'cyber.token/')
-    retry(args.cleos + 'set contract cyber.msig ' + args.contracts_dir + 'cyber.msig/')
-    retry(args.cleos + 'set contract cyber.stake ' + args.contracts_dir + 'cyber.stake/')
-    retry(args.cleos + 'set contract cyber.govern ' + args.contracts_dir + 'cyber.govern/')
-    retry(args.cleos + 'set contract cyber ' + args.contracts_dir + 'cyber.bios/')
+        retry(args.cleos + 'set contract cyber.msig ' + args.contracts_dir + 'cyber.msig/')
+        retry(args.cleos + 'set contract cyber.stake ' + args.contracts_dir + 'cyber.stake/')
+        retry(args.cleos + 'set contract cyber.govern ' + args.contracts_dir + 'cyber.govern/')
+        retry(args.cleos + 'set contract cyber ' + args.contracts_dir + 'cyber.bios/')
 def stepCreateTokens():
     if not args.golos_genesis:
         retry(args.cleos + 'push action cyber.token create \'["cyber", "10000000000.0000 %s"]\' -p cyber.token' % (args.symbol))

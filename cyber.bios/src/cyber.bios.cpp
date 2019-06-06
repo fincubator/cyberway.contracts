@@ -36,28 +36,19 @@ void bios::onblock(ignore<block_header> header) {
 
     const int64_t now = ::now();
     auto tnow = time_point_sec(now);
-
-    print("\n tnow: ", now);
-
     auto state = state_singleton(_self, _self.value);
     bool exists = state.exists();
     auto s = exists ? state.get() : state_info{tnow};
 
-    print("\n last_close_bid: ", s.last_close_bid.utc_seconds);
-
     if (exists) {
         auto diff = now - s.last_close_bid.utc_seconds;
-        print("\n diff: ", diff, " min_time_from_last_win: ", min_time_from_last_win);
         eosio_assert(diff >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
         if (diff > min_time_from_last_win) {
-            print("\n tadams");
             name_bid_table bids(_self, _self.value);
             auto idx = bids.get_index<"highbid"_n>();
             auto highest = idx.lower_bound( std::numeric_limits<uint64_t>::max()/2 );
             if( highest != idx.end() && highest->high_bid > 0 &&
                 (microseconds(current_time()) - highest->last_bid_time.time_since_epoch()) > microseconds(min_time_from_last_bid)) {
-                print("\n high_bid: ", highest->high_bid);
-
                 s.last_close_bid = tnow;
                 idx.modify( highest, same_payer, [&]( auto& b ){
                     b.high_bid = -b.high_bid;
@@ -68,8 +59,6 @@ void bios::onblock(ignore<block_header> header) {
     } else {
         state.set(s, _self);
     }
-
-    print("\n end");
 }
 
 void bios::bidname( name bidder, name newname, eosio::asset bid ) {
@@ -150,7 +139,6 @@ void bios::bidrefund( name bidder, name newname ) {
 }
 
 void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore<authority> active) {
-    print('\n newaccount');
     if( creator != _self ) {
         uint64_t tmp = newact.value >> 4;
         bool has_dot = false;

@@ -201,6 +201,7 @@ void token::add_payment( name owner, asset value, name ram_payer )
 void token::open( name owner, const symbol& symbol, name ram_payer )
 {
    require_auth( ram_payer );
+   eosio_assert( is_account( owner ), "owner account does not exist");
 
    auto sym_code_raw = symbol.code().raw();
 

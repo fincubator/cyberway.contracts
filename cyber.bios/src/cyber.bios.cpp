@@ -44,6 +44,7 @@ void bios::onblock(ignore<block_header> header) {
         auto diff = now - s.last_close_bid.utc_seconds;
         eosio_assert(diff >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
         if (diff > min_time_from_last_win) {
+            print("tadams");
             name_bid_table bids(_self, _self.value);
             auto idx = bids.get_index<"highbid"_n>();
             auto highest = idx.lower_bound( std::numeric_limits<uint64_t>::max()/2 );
@@ -63,6 +64,7 @@ void bios::onblock(ignore<block_header> header) {
 
 void bios::bidname( name bidder, name newname, eosio::asset bid ) {
    require_auth( bidder );
+
    eosio_assert( newname.suffix() == newname, "you can only bid on top-level suffix" );
 
    eosio_assert( (bool)newname, "the empty name is not a valid account name to bid on" );
@@ -81,6 +83,8 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
    print( name{bidder}, " bid ", bid, " on ", name{newname}, "\n" );
    auto current = bids.find( newname.value );
    if( current == bids.end() ) {
+       print("true");
+
       bids.emplace( bidder, [&]( auto& b ) {
          b.newname = newname;
          b.high_bidder = bidder;
@@ -88,6 +92,7 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
          b.last_bid_time = time_point(microseconds(current_time()));
       });
    } else {
+       print("false");
       eosio_assert( current->high_bid > 0, "this auction has already closed" );
       eosio_assert( bid.amount - current->high_bid > (current->high_bid / 10), "must increase bid by 10%" );
       eosio_assert( current->high_bidder != bidder, "account is already highest bidder" );
@@ -96,7 +101,7 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
 
       auto it = refunds_table.find( current->high_bidder.value );
       if ( it != refunds_table.end() ) {
-         refunds_table.modify( it, same_payer, [&](auto& r) {
+         refunds_table.modify( it, /*same_payer*/bidder, [&](auto& r) {
                r.amount += asset( current->high_bid, core_symbol() );
             });
       } else {
@@ -116,11 +121,11 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
 //      cancel_deferred( deferred_id );
       t.send( deferred_id, bidder );
 
-      bids.modify( current, bidder, [&]( auto& b ) {
-         b.high_bidder = bidder;
-         b.high_bid = bid.amount;
-         b.last_bid_time = time_point(microseconds(current_time()));
-      });
+//      bids.modify( current, bidder, [&]( auto& b ) {
+//         b.high_bidder = bidder;
+//         b.high_bid = bid.amount;
+//         b.last_bid_time = time_point(microseconds(current_time()));
+//      });
    }
 }
 

@@ -412,6 +412,24 @@
                 {"type": "name",  "name": "bidder"},
                 {"type": "name",  "name": "newname"}
             ]
+        },
+        {
+            "name": "namebids",
+            "base": "",
+            "fields": [
+                {"type": "name",           "name": "newname"},
+                {"type": "name",           "name": "high_bidder"},
+                {"type": "uint64",         "name": "high_bid"},
+                {"type": "time_point_sec", "name": "last_bid_time"}
+            ]
+        },
+        {
+            "name": "bidrefunds",
+            "base": "",
+            "fields": [
+                {"type": "name",  "name": "bidder"},
+                {"type": "asset", "name": "high_bidder"}
+            ]
         }
     ],
     "types": [],
@@ -522,6 +540,34 @@
                 "unique": "true",
                 "orders": [
                     {"field": "id", "order": "asc"}
+                ]
+            }]
+        },
+        {
+            "name": "bidrefunds",
+            "type": "bidrefunds",
+            "indexes": [{
+                "name": "primary",
+                "unique": "true",
+                "orders": [
+                    {"field": "bidder", "order": "asc"}
+                ]
+            }]
+        },
+        {
+            "name": "namebids",
+            "type": "namebids",
+            "indexes": [{
+                "name": "primary",
+                "unique": "true",
+                "orders": [
+                    {"field": "newname", "order": "asc"}
+                ]
+            }, {
+                "name": "highbid",
+                "unique": "false",
+                "orders": [
+                    {"field": "high_bid", "order": "asc"}
                 ]
             }]
         }

@@ -525,6 +525,7 @@ BOOST_FIXTURE_TEST_CASE( open_tests, cyber_token_tester ) try {
    auto bob_balance = get_account(N(bob), "0,CERO");
    BOOST_REQUIRE_EQUAL(true, bob_balance.is_null() );
 
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "owner account does not exist" ), open( N(bobdilan), "0,CERO", N(alice) ) );
    BOOST_REQUIRE_EQUAL( success(), open( N(bob), "0,CERO", N(alice) ) );
 
    bob_balance = get_account(N(bob), "0,CERO");

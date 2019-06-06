@@ -397,21 +397,8 @@ BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
     
     BOOST_CHECK_EQUAL(success(), stake.reward(_issuer, _carol, reward_c));
     BOOST_CHECK_EQUAL(success(), token.transfer(_issuer, _code, stake_w, "whale"));
-    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
-
-    for (int i = 0; i < 3; ++i) {
-        produce_block();
-        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2));
-        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
-    }
-    produce_block();
+    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2)));
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 3)));
-    for (int i = 0; i < 4; ++i) {
-        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 3, false));
-        BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2, false));
-        produce_block();
-    }
-    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1)));
     produce_block();
     auto params = control->get_global_properties().configuration;
     auto prev_min_ram = params.min_virtual_limits[resource_limits::RAM];

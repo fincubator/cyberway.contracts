@@ -42,6 +42,10 @@ public:
       abi_def abi;
       BOOST_REQUIRE_EQUAL(abi_serializer::to_abi(accnt.abi, abi), true);
       abi_ser.set_abi(abi, abi_serializer_max_time);
+
+
+      big_memo = std::string(max_memo_size, '0');
+      super_big_memo = std::string(max_memo_size + 1, '1');
    }
 
    action_result push_action( const account_name& signer, const action_name &name, const variant_object &data ) {
@@ -154,6 +158,10 @@ public:
    }
 
    abi_serializer abi_ser;
+   std::string big_memo;
+   std::string super_big_memo;
+
+   const size_t max_memo_size = 384;
 };
 
 BOOST_AUTO_TEST_SUITE(cyber_token_tests)
@@ -276,6 +284,13 @@ BOOST_FIXTURE_TEST_CASE( issue_tests, cyber_token_tester ) try {
       issue( N(alice), N(alice), asset::from_string("1.000 TKN"), "hola" )
    );
 
+   BOOST_REQUIRE_EQUAL( success(),
+      issue( N(alice), N(alice), asset::from_string("1.000 TKN"), big_memo )
+   );
+
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "memo has more than 384 bytes" ),
+      issue( N(alice), N(alice), asset::from_string("1.000 TKN"), super_big_memo )
+   );
 
 } FC_LOG_AND_RETHROW()
 
@@ -315,13 +330,23 @@ BOOST_FIXTURE_TEST_CASE( retire_tests, cyber_token_tester ) try {
    //should fail to retire more than current supply
    BOOST_REQUIRE_EQUAL( wasm_assert_msg("overdrawn balance"), retire( N(alice), asset::from_string("500.000 TKN"), "hola" ) );
 
-   BOOST_REQUIRE_EQUAL( success(), transfer( N(alice), N(bob), asset::from_string("200.000 TKN"), "hola" ) );
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "memo has more than 384 bytes" ),
+      transfer( N(alice), N(bob), asset::from_string("100.000 TKN"), super_big_memo )
+   );
+   BOOST_REQUIRE_EQUAL( success(), transfer( N(alice), N(bob), asset::from_string("100.000 TKN"), big_memo ) );
+
+   BOOST_REQUIRE_EQUAL( success(), transfer( N(alice), N(bob), asset::from_string("100.000 TKN"), "hola" ) );
    //should fail to retire since tokens are not on the issuer's balance
    BOOST_REQUIRE_EQUAL( wasm_assert_msg("overdrawn balance"), retire( N(alice), asset::from_string("300.000 TKN"), "hola" ) );
    //transfer tokens back
    BOOST_REQUIRE_EQUAL( success(), transfer( N(bob), N(alice), asset::from_string("200.000 TKN"), "hola" ) );
 
-   BOOST_REQUIRE_EQUAL( success(), retire( N(alice), asset::from_string("300.000 TKN"), "hola" ) );
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "memo has more than 384 bytes" ),
+       retire( N(alice), asset::from_string("100.000 TKN"), super_big_memo )
+   );
+   BOOST_REQUIRE_EQUAL( success(), retire( N(alice), asset::from_string("100.000 TKN"), big_memo ) );
+
+   BOOST_REQUIRE_EQUAL( success(), retire( N(alice), asset::from_string("200.000 TKN"), "hola" ) );
    stats = get_stats("3,TKN");
    REQUIRE_MATCHING_OBJECT( stats, mvo()
       ("supply", asset_info::from_string("0.000 TKN"))

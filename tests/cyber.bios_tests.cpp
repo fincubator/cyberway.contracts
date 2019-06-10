@@ -114,16 +114,17 @@ BOOST_FIXTURE_TEST_CASE( buyname, cyber_bios_tester ) try {
 
    BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(dan), token.from_amount(10000000)));
    BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(sam), token.from_amount(10000000)));
-//   produce_block(fc::days(7)); // ПАДАЕТ
+
    produce_block();
+   produce_block(fc::days(14));
 
    BOOST_REQUIRE_EXCEPTION( create_accounts_with_resources( { N(fail) }, N(dan) ),
                             eosio_assert_message_exception, eosio_assert_message_is( "no active bid for name" ) );
    BOOST_REQUIRE_EQUAL( success(), bidname( N(dan), N(nofail), token.from_amount(10000) ) );
    BOOST_REQUIRE_EQUAL( "assertion failure with message: must increase bid by 10%", bidname( N(sam), N(nofail), token.from_amount(10000) )); // didn't increase bid by 10%
    BOOST_REQUIRE_EQUAL( success(), bidname( N(sam), N(nofail), token.from_amount(20000) )); // didn't increase bid by 10%
-//   produce_block( fc::days(1) ); // ПАДАЕТ
-   produce_blocks(28801);
+   produce_block();
+   produce_block( fc::days(1) );
 
    BOOST_REQUIRE_EXCEPTION( create_accounts_with_resources( { N(nofail) }, N(dan) ),
                             eosio_assert_message_exception, eosio_assert_message_is( "only highest bidder can claim" ) );
@@ -228,66 +229,74 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
       BOOST_REQUIRE_EQUAL( success(), bidname( "eve", "prefe", token.from_amount(17200) ) );
    }
 
-//   produce_block( fc::days(14) );
    produce_block();
+   produce_block( fc::days(14) );
 
    // highest bid is from david for prefd but no bids can be closed yet
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefd), N(david) ),
                             fc::exception, fc_assert_exception_message_is( not_closed_message ) );
 
    // stake enough to go above the 15% threshold
-   BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(bob),  token.from_amount(100000000))); // FIXME this code
-//   BOOST_REQUIRE_EQUAL(0, get_producer_info("producer")["unpaid_blocks"].as<uint32_t>());
-//   BOOST_REQUIRE_EQUAL( success(), vote( N(alice), { N(producer) } ) );
+   BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(bob),  token.from_amount(100000000)));
+
+   produce_blocks(10);
+   produce_block( fc::days(2) );
+   produce_blocks(10);
+
+   // highest bid is from david for prefd but no bids can be closed yet
+   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefd), N(david) ),
+                            fc::exception, fc_assert_exception_message_is( not_closed_message ) );
 
    // need to wait for 14 days after going live
-   produce_blocks(10);
-//   produce_block( fc::days(2) );
-   produce_blocks( 10 );
-   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefd), N(david) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
-////    it's been 14 days, auction for prefd has been closed
-//   produce_block( fc::days(12) );
+   produce_block();
+   produce_block( fc::days(12) );
+   produce_block();
+
 //   create_account_with_resources( N(prefd), N(david) );
-//   produce_blocks(2);
-//   produce_block( fc::hours(23) );
-//   // auctions for prefa, prefb, prefc, prefe haven't been closed
-   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefa), N(bob) ),
-                            fc::exception, fc_assert_exception_message_is( not_closed_message ) );
-   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(alice) ),
-                            fc::exception, fc_assert_exception_message_is( not_closed_message ) );
-   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefc), N(bob) ),
-                            fc::exception, fc_assert_exception_message_is( not_closed_message ) );
-   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefe), N(eve) ),
-                            fc::exception, fc_assert_exception_message_is( not_closed_message ) );
+
+   produce_blocks(2);
+   produce_block( fc::hours(23) );
+
+   // auctions for prefa, prefb, prefc, prefe haven't been closed
+   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefa), N(bob) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
+   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(alice) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
+   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefc), N(bob) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
+   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefe), N(eve) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
+
    // attemp to create account with no bid
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefg), N(alice) ),
                             fc::exception, fc_assert_exception_message_is( "no active bid for name" ) );
+
    // changing highest bid pushes auction closing time by 24 hours
-   BOOST_REQUIRE_EQUAL( success(),
-                        bidname( "eve",  "prefb", token.from_amount(21880) ) );
+   BOOST_REQUIRE_EQUAL( success(), bidname( N(eve),  N(prefb), token.from_amount(21880) ) );
 
-//   produce_block( fc::hours(22) );
-//   produce_blocks(2);
+   produce_blocks(2);
+   produce_block( fc::hours(22) );
 
-   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(eve) ),
-                            fc::exception, fc_assert_exception_message_is( not_closed_message ) );
+//   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(eve) ),
+//                              fc::exception, fc_assert_exception_message_is( not_closed_message ) );
+
    // but changing a bid that is not the highest does not push closing time
    BOOST_REQUIRE_EQUAL( success(), bidname( "carl", "prefe", token.from_amount(20980) ) );
-//   produce_block( fc::hours(2) );
+
    produce_blocks(2);
+   produce_block( fc::hours(2) );
+
    // bid for prefb has closed, only highest bidder can claim
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(alice) ),
                             eosio_assert_message_exception, eosio_assert_message_is( "only highest bidder can claim" ) );
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(carl) ),
                             eosio_assert_message_exception, eosio_assert_message_is( "only highest bidder can claim" ) );
-//   create_account_with_resources( N(prefb), N(eve) );
+   create_account_with_resources( N(prefb), N(eve) );
 
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefe), N(carl) ),
                             fc::exception, fc_assert_exception_message_is( not_closed_message ) );
    produce_block();
-//   produce_block( fc::hours(24) );
+   produce_block( fc::hours(24) );
+
    // by now bid for prefe has closed
-//   create_account_with_resources( N(prefe), N(carl) );
+   create_account_with_resources( N(prefe), N(carl) );
+
    // prefe can now create *.prefe
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(xyz.prefe), N(carl) ),
                             fc::exception, fc_assert_exception_message_is("only suffix may create this account") );
@@ -301,7 +310,7 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE( namebid_pending_winner, cyber_bios_tester ) try {
-////   cross_15_percent_threshold();
+//   cross_15_percent_threshold();
 //   produce_block( fc::hours(14*24) );    //wait 14 day for name auction activation
    BOOST_REQUIRE_EQUAL( success(), token.transfer( config::system_account_name, N(alice1111111), token.from_amount( 100000000 ) ));
    BOOST_REQUIRE_EQUAL( success(), token.transfer( config::system_account_name, N(bob111111111), token.from_amount( 100000000 ) ));

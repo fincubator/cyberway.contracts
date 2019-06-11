@@ -151,13 +151,9 @@ void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore
             auto suffix = newact.suffix();
             if( suffix == newact ) {
                 name_bid_table bids(_self, _self.value);
-                auto current = bids.find( newact.value );
-                eosio_assert( current != bids.end(), "no active bid for name" );
+                auto current = bids.require_find( newact.value, "no active bid for name" );
                 eosio_assert( current->high_bidder == creator, "only highest bidder can claim" );
-                eosio_assert( current->high_bid > 0, "auction for name is not closed yet" );
-
-                print("high_bid: ", current->high_bid, "\n");
-
+                eosio_assert( current->high_bid < 0, "auction for name is not closed yet" );
                 bids.erase( current );
             } else {
                 eosio_assert( creator == suffix, "only suffix may create this account" );

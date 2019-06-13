@@ -29,23 +29,23 @@ using mvo = fc::mutable_variant_object;
 
 namespace cyber_system {
 
-class cyber_system_tester : public TESTER {
+class cyber_system_tester : public tester {
 public:
 
    void basic_setup() {
       produce_blocks( 2 );
 
       create_accounts({config::token_account_name,
-         config::ram_account_name, config::ramfee_account_name, config::stake_account_name,
+         config::ram_account_name, config::ramfee_account_name, //config::stake_account_name,
          config::bpay_account_name, config::vpay_account_name, config::saving_account_name,
          config::names_account_name});
 
 
       produce_blocks( 100 );
-      set_code( N(cyber.token), contracts::token_wasm());
-      set_abi( N(cyber.token), contracts::token_abi().data() );
+      set_code( config::token_account_name, contracts::token_wasm());
+      set_abi(config::token_account_name, contracts::token_abi().data() );
       {
-         const auto& accnt = control->chaindb().get<account_object>( N(cyber.token) );
+         const auto& accnt = control->chaindb().get<account_object>( config::token_account_name );
          abi_def abi;
          BOOST_REQUIRE_EQUAL(abi_serializer::to_abi(accnt.abi, abi), true);
          token_abi_ser.set_abi(abi, abi_serializer_max_time);
@@ -54,14 +54,14 @@ public:
 
    void create_core_token( symbol core_symbol = symbol{CORE_SYM} ) {
       FC_ASSERT( core_symbol.precision() != 4, "create_core_token assumes precision of core token is 4" );
-      create_currency( N(cyber.token), config::system_account_name, asset(100000000000000, core_symbol) );
+      create_currency( config::token_account_name, config::system_account_name, asset(100000000000000, core_symbol) );
       issue(config::system_account_name, asset(10000000000000, core_symbol) );
       BOOST_REQUIRE_EQUAL(asset(10000000000000, core_symbol), get_balance(config::system_account_name, core_symbol));
    }
 
    void deploy_contract( bool call_init = true ) {
-      set_code( config::system_account_name, contracts::system_wasm() );
-      set_abi( config::system_account_name, contracts::system_abi().data() );
+      set_code( config::system_account_name, contracts::bios_wasm() );
+      set_abi( config::system_account_name, contracts::bios_abi().data() );
       if( call_init ) {
          base_tester::push_action(config::system_account_name, N(init),
                                                config::system_account_name,  mutable_variant_object()
@@ -505,7 +505,7 @@ public:
       }
       produce_blocks( 250);
 
-      auto trace_auth = TESTER::push_action(config::system_account_name, updateauth::get_name(), config::system_account_name, mvo()
+      auto trace_auth = tester::push_action(config::system_account_name, updateauth::get_name(), config::system_account_name, mvo()
                                             ("account", name(config::system_account_name).to_string())
                                             ("permission", name(config::active_name).to_string())
                                             ("parent", name(config::owner_name).to_string())

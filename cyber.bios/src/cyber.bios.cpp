@@ -36,10 +36,10 @@ void bios::onblock(ignore<block_header> header) {
 
     const int64_t now = ::now();
     auto tnow = time_point_sec(now);
-
     auto state = state_singleton(_self, _self.value);
     bool exists = state.exists();
     auto s = exists ? state.get() : state_info{tnow};
+
     if (exists) {
         auto diff = now - s.last_close_bid.utc_seconds;
         eosio_assert(diff >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
@@ -63,6 +63,7 @@ void bios::onblock(ignore<block_header> header) {
 
 void bios::bidname( name bidder, name newname, eosio::asset bid ) {
    require_auth( bidder );
+
    eosio_assert( newname.suffix() == newname, "you can only bid on top-level suffix" );
 
    eosio_assert( (bool)newname, "the empty name is not a valid account name to bid on" );
@@ -96,7 +97,7 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
 
       auto it = refunds_table.find( current->high_bidder.value );
       if ( it != refunds_table.end() ) {
-         refunds_table.modify( it, same_payer, [&](auto& r) {
+         refunds_table.modify( it, /*same_payer*/bidder, [&](auto& r) {
                r.amount += asset( current->high_bid, core_symbol() );
             });
       } else {
@@ -150,8 +151,7 @@ void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore
             auto suffix = newact.suffix();
             if( suffix == newact ) {
                 name_bid_table bids(_self, _self.value);
-                auto current = bids.find( newact.value );
-                eosio_assert( current != bids.end(), "no active bid for name" );
+                auto current = bids.require_find( newact.value, "no active bid for name" );
                 eosio_assert( current->high_bidder == creator, "only highest bidder can claim" );
                 eosio_assert( current->high_bid < 0, "auction for name is not closed yet" );
                 bids.erase( current );

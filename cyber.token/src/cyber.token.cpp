@@ -252,7 +252,7 @@ void token::claim( name owner, asset quantity )
 void token::bulktransfer(name from, vector<recipient> recipients)
 {
     require_recipient(from);
-    eosio_assert(recipients.size(), "not found recipients");
+    eosio_assert(recipients.size(), "recipients must not be empty");
 
     symbol temp_symbol = recipients.at(0).quantity.symbol;
     std::set<name> require_recipients;
@@ -266,6 +266,18 @@ void token::bulktransfer(name from, vector<recipient> recipients)
     }
 }
 
+void token::bulkpayment(name from, vector<recipient> recipients)
+{
+    require_recipient(from);
+    eosio_assert(recipients.size(), "recipients must not be empty");
+
+    symbol temp_symbol = recipients.at(0).quantity.symbol;
+    for (auto recipient_obj : recipients) {
+        eosio_assert(temp_symbol == recipient_obj.quantity.symbol, "payment of different tokens is prohibited");
+        do_transfer(from, recipient_obj.to, recipient_obj.quantity, recipient_obj.memo, true);
+    }
+}
+
 } /// namespace eosio
 
-EOSIO_DISPATCH( eosio::token, (create)(issue)(transfer)(bulktransfer)(payment)(claim)(open)(close)(retire) )
+EOSIO_DISPATCH( eosio::token, (create)(issue)(transfer)(bulktransfer)(payment)(bulkpayment)(claim)(open)(close)(retire) )

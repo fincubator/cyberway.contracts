@@ -126,13 +126,7 @@ namespace cyber {
 
          [[eosio::action]]
          void setcode( name account, uint8_t vmtype, uint8_t vmversion, const std::vector<char>& code ) {}
-
-         [[eosio::action]]
-         void setglimits( uint64_t ram, uint64_t net, uint64_t cpu ) {
-            (void)ram; (void)net; (void)cpu;
-            require_auth( _self );
-         }
-
+         
          [[eosio::action]]
          void setprods( std::vector<eosio::producer_key> schedule ) {
             (void)schedule; // schedule argument just forces the deserialization of the action data into vector<producer_key> (necessary check)

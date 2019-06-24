@@ -2,12 +2,10 @@
 #include "cyber.token_test_api.hpp"
 #include "cyber.stake_test_api.hpp"
 #include "cyber.govern_test_api.hpp"
+#include "cyber.bios_test_api.hpp"
 #include "contracts.hpp"
 #include "../cyber.bios/include/cyber.bios/config.hpp"
 #include <eosio/chain/block_header_state.hpp>
-#include <eosio/chain/int_arithmetic.hpp>
-#include <eosio/chain/resource_limits.hpp>
-#include <eosio/chain/global_property_object.hpp>
 
 namespace cfg = cyber::config;
 using eosio::chain::config::stake_account_name;
@@ -23,6 +21,7 @@ protected:
     cyber_token_api token;
     cyber_stake_api stake;
     cyber_govern_api govern;
+    cyber_bios_api bios;
 
     time_point_sec head_block_time() { return time_point_sec(control->head_block_time().time_since_epoch().to_seconds()); };
  
@@ -32,6 +31,7 @@ public:
         , token({this, cfg::token_name, cfg::system_token})
         , stake({this, _code})
         , govern({this, govern_account_name})
+        , bios({this, config::system_account_name})
     { 
         create_accounts({_alice, _bob, _carol, _whale,
             cfg::token_name, cfg::worker_name});
@@ -48,7 +48,7 @@ public:
     
     void deploy_sys_contracts() {
         BOOST_TEST_MESSAGE("--- creating token and stake"); 
-        BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(10000000000, token._symbol)));
+        BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(std::numeric_limits<int64_t>::max() / 10, token._symbol)));
         BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, 
             std::vector<uint8_t>{30, 10, 3, 1}, 7 * 24 * 60 * 60, 52));
             
@@ -170,6 +170,15 @@ public:
         }
         static bool is_system_err_mssg(const std::string& arg) {
             return arg.find("SYSTEM") != std::string::npos;
+        }
+        static bool is_transaction_cpu_limit_err_mssg(const std::string& arg) {
+            return arg.find("is greater than the maximum billable CPU time for the transaction") != std::string::npos;
+        }
+        static bool is_block_cpu_limit_err_mssg(const std::string& arg) {
+            return arg.find("is greater than the billable CPU time left in the block") != std::string::npos;
+        }
+        static bool is_block_res_limit_err_mssg(const std::string& arg) {
+            return arg.find("Block has insufficient resources") != std::string::npos;
         }
     } err;
 };
@@ -355,13 +364,14 @@ BOOST_FIXTURE_TEST_CASE(open_test, cyber_stake_tester) try {
     produce_block();
 } FC_LOG_AND_RETHROW()
 
-BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
+BOOST_AUTO_TEST_SUITE(bandwidth)
+BOOST_FIXTURE_TEST_CASE(basic_tests, cyber_stake_tester) try {
     
     BOOST_TEST_MESSAGE("Basic bw tests");
     install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
     produce_block();
-    double ram_using_prop = 0.0001;
-    double ram_capacity = config::default_min_virtual_limits[resource_limits::RAM] * config::default_account_usage_windows[resource_limits::RAM] / config::block_interval_ms;
+    double ram_using_prop = 0.0000001;
+    double ram_capacity = config::default_max_virtual_limits[resource_limits::RAM] * config::default_account_usage_windows[resource_limits::RAM] / config::block_interval_ms;
     stake.set_billed(100, ram_capacity * ram_using_prop);
     token.set_billed(100, ram_capacity * ram_using_prop);
 
@@ -400,23 +410,110 @@ BOOST_FIXTURE_TEST_CASE(bw_tests, cyber_stake_tester) try {
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2)));
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 3)));
     produce_block();
-    auto params = control->get_global_properties().configuration;
-    auto prev_min_ram = params.min_virtual_limits[resource_limits::RAM];
-    auto prev_max_ram = params.max_virtual_limits[resource_limits::RAM];
-    params.min_virtual_limits[resource_limits::RAM] = 1;
-    params.max_virtual_limits[resource_limits::RAM] = 2;
+    auto params = bios.get_params();
+    const auto& prev_min = params.min_virtual_limits;
+    const auto& prev_max = params.max_virtual_limits;
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_whale, token._symbol.to_symbol_code(), 1));
-    BOOST_CHECK_EQUAL(success(), push_action(config::system_account_name, N(setparams), config::system_account_name, fc::mutable_variant_object()("params", params)));
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({prev_min[0], prev_min[1], 1, prev_min[3]}, cyber_bios_api::MIN_VIRT));
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({prev_max[0], prev_max[1], 2, prev_max[3]}, cyber_bios_api::MAX_VIRT));
     produce_block();
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_whale, token._symbol.to_symbol_code(), 2)));
-    params.min_virtual_limits[resource_limits::RAM] = prev_min_ram;
-    params.max_virtual_limits[resource_limits::RAM] = prev_max_ram;
-    BOOST_CHECK_EQUAL(success(), push_action(config::system_account_name, N(setparams), config::system_account_name, fc::mutable_variant_object()("params", params)));
+    BOOST_CHECK_EQUAL(success(), bios.set_limits(prev_max, cyber_bios_api::MAX_VIRT));
+    BOOST_CHECK_EQUAL(success(), bios.set_limits(prev_min, cyber_bios_api::MIN_VIRT));
     produce_block();
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_whale, token._symbol.to_symbol_code(), 2));
     produce_block();
 
 } FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(sys_transaction_usage_test, cyber_stake_tester) try {
+    deploy_sys_contracts();
+    stake.set_verbose(false);
+    asset stake_u(1000, token._symbol);
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, stake_u, ""));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, stake_u));
+    stake.set_billed(5000, 1024);
+    bios.set_billed(3000, 1024);
+    BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({8000, 10000, 10000, 0}, cyber_bios_api::TRANSACTION));
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({12000, 100000, 100000, 1}, cyber_bios_api::BLOCK));
+    BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(3000));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1));
+    err.is_block_cpu_limit_err_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(2000));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(hard_limits_tests, cyber_stake_tester) try {
+    deploy_sys_contracts();
+    stake.set_verbose(false);
+    asset stake_u(1000, token._symbol);
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, stake_u, ""));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _bob, stake_u, ""));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, stake_u, ""));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, stake_u));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_bob, _code, stake_u));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, stake_u));
+    BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(500));
+    stake.set_billed(1501, 1024);
+    bios.set_billed(500, 1);
+    BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({1500, 10000, 10000, 10000}, cyber_bios_api::TRANSACTION));
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({2500, 100000, 100000, 20000}, cyber_bios_api::BLOCK));
+    produce_block();
+    
+    //err.is_transaction_cpu_limit_err_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
+    stake.set_billed(1500, 1024);
+    //BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
+
+    //err.is_block_cpu_limit_err_mssg(stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2));
+    stake.set_billed(500, 1024);
+    uint64_t prev_storage_used = bios.get_pending_usage()[3];
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 0));
+    uint64_t storage_used = bios.get_pending_usage()[3] - prev_storage_used;
+    BOOST_TEST_MESSAGE("--- storage_used = " << storage_used);
+    //err.is_block_cpu_limit_err_mssg(stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 2));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({1500, 10000, 10000, storage_used}, cyber_bios_api::TRANSACTION));
+    BOOST_CHECK_EQUAL(success(), bios.set_limits({2500, 100000, 100000, storage_used + 1}, cyber_bios_api::BLOCK));
+    produce_block();
+    
+    auto pending_usage = bios.get_pending_usage()[3];
+    BOOST_TEST_MESSAGE("--- pending1 = " << pending_usage);
+    
+    BOOST_TEST_MESSAGE("--- add usage1"); 
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
+    pending_usage = bios.get_pending_usage()[3];
+    BOOST_TEST_MESSAGE("--- pending2 = " << pending_usage);
+    
+    //test passes without this code block
+    BOOST_TEST_MESSAGE("--- err usage");
+    err.is_block_res_limit_err_mssg(stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0));
+    pending_usage = bios.get_pending_usage()[3];
+    BOOST_TEST_MESSAGE("--- pending3 = " << pending_usage);
+    
+    BOOST_TEST_MESSAGE("--- sub usage");
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+    pending_usage = bios.get_pending_usage()[3];
+    BOOST_TEST_MESSAGE("--- pending4 = " << pending_usage);
+    
+    BOOST_TEST_MESSAGE("--- add usage2");
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0));
+    pending_usage = bios.get_pending_usage()[3];
+    BOOST_TEST_MESSAGE("--- pending5 = " << pending_usage);
+
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+
+BOOST_AUTO_TEST_SUITE_END() // bandwidth
 
 BOOST_AUTO_TEST_SUITE(unstaking)
 

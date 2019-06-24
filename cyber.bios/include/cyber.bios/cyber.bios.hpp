@@ -1,12 +1,12 @@
 #pragma once
-#include <eosiolib/action.hpp>
-#include <eosiolib/crypto.h>
-#include <eosiolib/eosio.hpp>
-#include <eosiolib/asset.hpp>
-#include <eosiolib/privileged.hpp>
-#include <eosiolib/producer_schedule.hpp>
-#include <eosiolib/singleton.hpp>
-#include <eosiolib/time.hpp>
+#include <eosio/action.hpp>
+#include <eosio/crypto.hpp>
+#include <eosio/eosio.hpp>
+#include <eosio/asset.hpp>
+#include <eosio/privileged.hpp>
+#include <eosio/producer_schedule.hpp>
+#include <eosio/singleton.hpp>
+#include <eosio/time.hpp>
 
 namespace cyber {
    using eosio::permission_level;
@@ -54,16 +54,16 @@ namespace cyber {
         uint32_t                                  timestamp;
         name                                      producer;
         uint16_t                                  confirmed = 0;
-        capi_checksum256                          previous;
-        capi_checksum256                          transaction_mroot;
-        capi_checksum256                          action_mroot;
+        eosio::checksum256                        previous;
+        eosio::checksum256                        transaction_mroot;
+        eosio::checksum256                        action_mroot;
         uint32_t                                  schedule_version = 0;
         std::optional<eosio::producer_schedule>   new_producers;
    };
 
    class [[eosio::contract("cyber.bios")]] bios : public contract {
       struct [[eosio::table("state")]] state_info {
-         time_point_sec last_close_bid;
+          time_point_sec last_close_bid;
       };
       using state_singleton = eosio::singleton<"biosstate"_n, state_info>;
 
@@ -79,7 +79,7 @@ namespace cyber {
         name              newname;
         name              high_bidder;
         int64_t           high_bid = 0; ///< negative high_bid == closed auction waiting to be claimed
-        eosio::time_point last_bid_time;
+        eosio::time_point_sec last_bid_time;
 
         uint64_t primary_key()const { return newname.value;                    }
         uint64_t by_high_bid()const { return static_cast<uint64_t>(-high_bid); }
@@ -119,30 +119,24 @@ namespace cyber {
                           ignore<name>  type ) {}
 
          [[eosio::action]]
-         void canceldelay( ignore<permission_level> canceling_auth, ignore<capi_checksum256> trx_id ) {}
+         void canceldelay( ignore<permission_level> canceling_auth, ignore<eosio::checksum256> trx_id ) {}
 
          [[eosio::action]]
          void onerror( ignore<uint128_t> sender_id, ignore<std::vector<char>> sent_trx ) {}
 
          [[eosio::action]]
          void setcode( name account, uint8_t vmtype, uint8_t vmversion, const std::vector<char>& code ) {}
-         
+
          [[eosio::action]]
          void setprods( std::vector<eosio::producer_key> schedule ) {
-            (void)schedule; // schedule argument just forces the deserialization of the action data into vector<producer_key> (necessary check)
             require_auth( _self );
-
-            constexpr size_t max_stack_buffer_size = 512;
-            size_t size = action_data_size();
-            char* buffer = (char*)( max_stack_buffer_size < size ? malloc(size) : alloca(size) );
-            read_action_data( buffer, size );
-            set_proposed_producers(buffer, size);
+            eosio::set_proposed_producers( schedule );
          }
 
          [[eosio::action]]
          void setparams( const eosio::blockchain_parameters& params ) {
             require_auth( _self );
-            set_blockchain_parameters( params );
+            eosio::set_blockchain_parameters( params );
          }
 
          [[eosio::action]]
@@ -151,20 +145,7 @@ namespace cyber {
          }
 
          [[eosio::action]]
-         void setabi( name account, const std::vector<char>& abi ) {
-            abi_hash_table table(_self, _self.value);
-            auto itr = table.find( account.value );
-            if( itr == table.end() ) {
-               table.emplace( account, [&]( auto& row ) {
-                  row.owner = account;
-                  sha256( const_cast<char*>(abi.data()), abi.size(), &row.hash );
-               });
-            } else {
-               table.modify( itr, name(), [&]( auto& row ) {
-                  sha256( const_cast<char*>(abi.data()), abi.size(), &row.hash );
-               });
-            }
-         }
+         void setabi( name account, const std::vector<char>& abi ) {}
 
          [[eosio::action]]
          void bidname( name bidder, name newname, eosio::asset bid );
@@ -172,16 +153,6 @@ namespace cyber {
          [[eosio::action]]
          void bidrefund( name bidder, name newname );
 
-         struct [[eosio::table]] abi_hash {
-            name              owner;
-            capi_checksum256  hash;
-            uint64_t primary_key()const { return owner.value; }
-
-            EOSLIB_SERIALIZE( abi_hash, (owner)(hash) )
-         };
-
-         typedef eosio::multi_index< "abihash"_n, abi_hash > abi_hash_table;
-         
          [[eosio::action]] void onblock(ignore<block_header> header);
 
    };

@@ -1,4 +1,4 @@
-#include <eosiolib/domain.hpp>
+#include <eosio/domain.hpp>
 #include <string>
 #include <vector>
 
@@ -94,7 +94,7 @@ void validate_domain_name(const domain_name& n) {
         "Domain name contains bad symbol",
         "Top-level name is all-numeric"
     };
-    eosio_assert(r == valid, err[r].c_str());
+    eosio::check(r == valid, err[r].c_str());
 }
 
 void validate_username(const username& n) {
@@ -107,7 +107,7 @@ void validate_username(const username& n) {
         "Username part can't start or end with '-'",
         "Username contains bad symbol"
     };
-    eosio_assert(r == valid, err[r].c_str());
+    eosio::check(r == valid, err[r].c_str());
 }
 
 

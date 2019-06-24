@@ -3,8 +3,8 @@
 #include <cyber.govern/cyber.govern.hpp>
 #include <cyber.token/cyber.token.hpp>
 
-#include <eosiolib/system.hpp>
-#include <eosiolib/transaction.hpp>
+#include <eosio/system.hpp>
+#include <eosio/transaction.hpp>
 
 eosio::symbol core_symbol() {
     const static auto sym = cyber::config::system_token;
@@ -34,22 +34,21 @@ void bios::onblock(ignore<block_header> header) {
     INLINE_ACTION_SENDER(govern, onblock)(govern_name, {{govern_name, active_name}}, {producer});
     //TODO: update names
 
-    const int64_t now = ::now();
-    auto tnow = time_point_sec(now);
+    auto now = eosio::current_time_point();
     auto state = state_singleton(_self, _self.value);
     bool exists = state.exists();
-    auto s = exists ? state.get() : state_info{tnow};
+    auto s = exists ? state.get() : state_info{now};
 
     if (exists) {
-        auto diff = now - s.last_close_bid.utc_seconds;
-        eosio_assert(diff >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
-        if (diff > min_time_from_last_win) {
+        auto diff = now - s.last_close_bid;
+        eosio::check(diff.to_seconds() >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
+        if (diff.to_seconds() > min_time_from_last_win) {
             name_bid_table bids(_self, _self.value);
             auto idx = bids.get_index<"highbid"_n>();
             auto highest = idx.lower_bound( std::numeric_limits<uint64_t>::max()/2 );
             if( highest != idx.end() && highest->high_bid > 0 &&
-                (microseconds(current_time()) - highest->last_bid_time.time_since_epoch()) > microseconds(min_time_from_last_bid)) {
-                s.last_close_bid = tnow;
+                (now - highest->last_bid_time).to_seconds() > min_time_from_last_bid) {
+                s.last_close_bid = now;
                 idx.modify( highest, same_payer, [&]( auto& b ){
                     b.high_bid = -b.high_bid;
                 });
@@ -64,14 +63,14 @@ void bios::onblock(ignore<block_header> header) {
 void bios::bidname( name bidder, name newname, eosio::asset bid ) {
    require_auth( bidder );
 
-   eosio_assert( newname.suffix() == newname, "you can only bid on top-level suffix" );
+   eosio::check( newname.suffix() == newname, "you can only bid on top-level suffix" );
 
-   eosio_assert( (bool)newname, "the empty name is not a valid account name to bid on" );
-   eosio_assert( (newname.value & 0xFull) == 0, "13 character names are not valid account names to bid on" );
-   eosio_assert( (newname.value & 0x1F0ull) == 0, "accounts with 12 character names and no dots can be created without bidding required" );
-   eosio_assert( !is_account( newname ), "account already exists" );
-   eosio_assert( bid.symbol == core_symbol(), "asset must be system token" );
-   eosio_assert( bid.amount > 0, "insufficient bid" );
+   eosio::check( (bool)newname, "the empty name is not a valid account name to bid on" );
+   eosio::check( (newname.value & 0xFull) == 0, "13 character names are not valid account names to bid on" );
+   eosio::check( (newname.value & 0x1F0ull) == 0, "accounts with 12 character names and no dots can be created without bidding required" );
+   eosio::check( !is_account( newname ), "account already exists" );
+   eosio::check( bid.symbol == core_symbol(), "asset must be system token" );
+   eosio::check( bid.amount > 0, "insufficient bid" );
 
    INLINE_ACTION_SENDER(eosio::token, transfer)(
       token_name, { {bidder, active_name} },
@@ -86,12 +85,12 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
          b.newname = newname;
          b.high_bidder = bidder;
          b.high_bid = bid.amount;
-         b.last_bid_time = time_point(microseconds(current_time()));
+         b.last_bid_time = eosio::current_time_point();
       });
    } else {
-      eosio_assert( current->high_bid > 0, "this auction has already closed" );
-      eosio_assert( bid.amount - current->high_bid > (current->high_bid / 10), "must increase bid by 10%" );
-      eosio_assert( current->high_bidder != bidder, "account is already highest bidder" );
+      eosio::check( current->high_bid > 0, "this auction has already closed" );
+      eosio::check( bid.amount - current->high_bid > (current->high_bid / 10), "must increase bid by 10%" );
+      eosio::check( current->high_bidder != bidder, "account is already highest bidder" );
 
       bid_refund_table refunds_table(_self, newname.value);
 
@@ -120,7 +119,7 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
       bids.modify( current, bidder, [&]( auto& b ) {
          b.high_bidder = bidder;
          b.high_bid = bid.amount;
-         b.last_bid_time = time_point(microseconds(current_time()));
+         b.last_bid_time = eosio::current_time_point();
       });
    }
 }
@@ -130,7 +129,7 @@ void bios::bidrefund( name bidder, name newname ) {
 
    bid_refund_table refunds_table(_self, newname.value);
    auto it = refunds_table.find( bidder.value );
-   eosio_assert( it != refunds_table.end(), "refund not found" );
+   eosio::check( it != refunds_table.end(), "refund not found" );
    INLINE_ACTION_SENDER(eosio::token, transfer)(
         token_name, { {names_name, active_name}, {bidder, active_name} },
         { names_name, bidder, asset(it->amount), std::string("refund bid on name ")+(name{newname}).to_string() }
@@ -152,11 +151,11 @@ void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore
             if( suffix == newact ) {
                 name_bid_table bids(_self, _self.value);
                 auto current = bids.require_find( newact.value, "no active bid for name" );
-                eosio_assert( current->high_bidder == creator, "only highest bidder can claim" );
-                eosio_assert( current->high_bid < 0, "auction for name is not closed yet" );
+                eosio::check( current->high_bidder == creator, "only highest bidder can claim" );
+                eosio::check( current->high_bid < 0, "auction for name is not closed yet" );
                 bids.erase( current );
             } else {
-                eosio_assert( creator == suffix, "only suffix may create this account" );
+                eosio::check( creator == suffix, "only suffix may create this account" );
             }
         }
     }

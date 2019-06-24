@@ -1,7 +1,8 @@
 #pragma once
-#include <eosiolib/eosio.hpp>
-#include <eosiolib/singleton.hpp>
-#include <eosiolib/time.hpp>
+#include <eosio/eosio.hpp>
+#include <eosio/singleton.hpp>
+#include <eosio/time.hpp>
+#include <eosio/crypto.hpp>
 #include <cyber.govern/config.hpp>
 
 namespace cyber {

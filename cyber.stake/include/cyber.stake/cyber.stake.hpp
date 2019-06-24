@@ -4,13 +4,13 @@
  */
 #pragma once
 
-#include <eosiolib/asset.hpp>
-#include <eosiolib/eosio.hpp>
-#include <eosiolib/time.hpp>
+#include <eosio/asset.hpp>
+#include <eosio/eosio.hpp>
+#include <eosio/time.hpp>
 #include "config.hpp"
 #include <string>
 #include <tuple>
-#include <eosiolib/privileged.h>
+#include <eosio/privileged.hpp>
 
 #define table_owner name()
 
@@ -149,7 +149,7 @@ struct structures {
     using payouts = eosio::multi_index<"payout"_n, structures::payout, payout_id_index, payout_acc_index>;
 
     void update_stake_proxied(symbol_code token_code, name agent_name) {
-        ::update_stake_proxied(token_code.raw(), agent_name.value, static_cast<int>(true));
+        eosio::update_stake_proxied(token_code, agent_name, true);
     }
     
     void send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode = false);
@@ -185,7 +185,7 @@ struct structures {
         candidates candidates_table(table_owner, table_owner.value);
         auto cands_idx = candidates_table.get_index<"bykey"_n>();
         auto cand = cands_idx.find(std::make_tuple(token_code, account));
-        eosio_assert(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
+        eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
         cands_idx.modify(cand, name(), f);
     }
     
@@ -193,7 +193,7 @@ struct structures {
     void modify_stat(symbol_code token_code, Lambda f) {
         stats stats_table(table_owner, table_owner.value);
         auto stat = stats_table.find(token_code.raw());
-        eosio_assert(stat != stats_table.end(), "stat doesn't exist");
+        eosio::check(stat != stats_table.end(), "stat doesn't exist");
         stats_table.modify(stat, name(), f);
     }
     

@@ -1,7 +1,7 @@
-#include <cyber.govern/cyber.govern.hpp>
-#include <eosiolib/privileged.hpp> 
 #include <cyber.stake/cyber.stake.hpp>
 #include <cyber.token/cyber.token.hpp>
+#include <cyber.govern/cyber.govern.hpp>
+#include <eosio/privileged.hpp>
 #include <common/util.hpp>
 
 using namespace cyber::config;
@@ -12,7 +12,7 @@ void govern::onblock(name producer) {
     require_auth(_self);
     
     auto state = state_singleton(_self, _self.value);
-    auto s = state.get_or_default(structures::state_info { .last_schedule_increase = time_point_sec(now()) });
+    auto s = state.get_or_default(structures::state_info { .last_schedule_increase = eosio::current_time_point() });
     
     s.block_num++;
     
@@ -20,7 +20,7 @@ void govern::onblock(name producer) {
     if (producer != config::internal_name) {
         auto supply     = eosio::token::get_supply    (config::token_name, system_token.code()).amount;
         auto max_supply = eosio::token::get_max_supply(config::token_name, system_token.code()).amount;
-        eosio_assert(max_supply >= supply, "SYSTEM: incorrect supply");
+        eosio::check(max_supply >= supply, "SYSTEM: incorrect supply");
         
         if ((s.block_num % config::update_emission_per_block_interval == 0) || !s.target_emission_per_block) {
             s.target_emission_per_block = get_target_emission_per_block(supply);
@@ -106,13 +106,13 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
 
 void govern::propose_producers(structures::state_info& s) {
 
-    if ((s.required_producers_num < max_producers_num) && (now() - s.last_schedule_increase.sec_since_epoch() >= schedule_increase_min_delay)) {
+    if ((s.required_producers_num < max_producers_num) && (eosio::current_time_point() - s.last_schedule_increase).to_seconds() >= schedule_increase_min_delay) {
         auto votes_total = stake::get_votes_sum(system_token.code());
         auto votes_top   = stake::get_votes_sum(system_token.code(), s.required_producers_num - active_reserve_producers_num);
         
         if (votes_top < safe_pct(votes_total, schedule_increase_blocking_votes_pct)) {
             s.required_producers_num += 1;
-            s.last_schedule_increase = time_point_sec(now());
+            s.last_schedule_increase = eosio::current_time_point();
         }
     }
     
@@ -121,14 +121,12 @@ void govern::propose_producers(structures::state_info& s) {
     if (new_producers_num < s.last_producers_num) {
         return;
     }
-    
-    std::vector<std::pair<name, public_key> > schedule;
+    std::vector<eosio::producer_key> schedule;
     schedule.reserve(new_producers_num);
     for (const auto& t : new_producers) {
-        schedule.emplace_back(std::make_pair(t.account, t.signing_key));
+        schedule.emplace_back(eosio::producer_key{t.account, t.signing_key});
     }
-    auto packed_schedule = pack(schedule);
-    if (set_proposed_producers(packed_schedule.data(),  packed_schedule.size()) < 0) {
+    if (!eosio::set_proposed_producers(schedule)) {
         return;
     }
     s.last_producers_num = new_producers_num;
@@ -145,7 +143,7 @@ void govern::propose_producers(structures::state_info& s) {
 
 int64_t govern::get_target_emission_per_block(int64_t supply) const {
     auto votes_sum = cyber::stake::get_votes_sum(system_token.code());
-    eosio_assert(votes_sum <= supply, "SYSTEM: incorrect votes_sum val");
+    eosio::check(votes_sum <= supply, "SYSTEM: incorrect votes_sum val");
     auto not_involved_pct = static_cast<decltype(config::_100percent)>(safe_prop(config::_100percent, supply - votes_sum, supply));
     auto arg = std::min(std::max(not_involved_pct, config::emission_min_arg), config::emission_max_arg);
     arg -= config::emission_min_arg;

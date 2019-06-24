@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
 project(eosio_contracts VERSION 1.5.1)
 
-set(EOSIO_CDT_VERSION_MIN "1.4")
-set(EOSIO_CDT_VERSION_SOFT_MAX "1.5")
+set(EOSIO_CDT_VERSION_MIN "1.6")
+set(EOSIO_CDT_VERSION_SOFT_MAX "1.7")
 #set(EOSIO_CDT_VERSION_HARD_MAX "")
 
 find_package(eosio.cdt)
@@ -38,7 +38,6 @@ endmacro()
 
 add_subdirectory(cyber.bios)
 add_subdirectory(cyber.msig)
-add_subdirectory(cyber.system)
 add_subdirectory(cyber.token)
 add_subdirectory(cyber.domain)
 add_subdirectory(cyber.stake)

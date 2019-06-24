@@ -130,6 +130,11 @@
             ]
         },
         {
+            "name": "checkwin",
+            "base": "",
+            "fields": []
+        },
+        {
             "name": "bidname",
             "base": "",
             "fields": [
@@ -142,8 +147,7 @@
             "name": "bidrefund",
             "base": "",
             "fields": [
-                {"type": "name",  "name": "bidder"},
-                {"type": "name",  "name": "newname"}
+                {"type": "name",  "name": "bidder"}
             ]
         }
     ],
@@ -152,6 +156,10 @@
         {
             "name": "setprods",
             "type": "setprods"
+        },
+        {
+            "name": "checkwin",
+            "type": "checkwin"
         },
         {
             "name": "bidname",

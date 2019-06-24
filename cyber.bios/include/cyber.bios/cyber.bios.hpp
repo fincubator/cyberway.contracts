@@ -148,10 +148,13 @@ namespace cyber {
          void setabi( name account, const std::vector<char>& abi ) {}
 
          [[eosio::action]]
+         void checkwin();
+
+         [[eosio::action]]
          void bidname( name bidder, name newname, eosio::asset bid );
 
          [[eosio::action]]
-         void bidrefund( name bidder, name newname );
+         void bidrefund( name bidder );
 
          [[eosio::action]] void onblock(ignore<block_header> header);
 

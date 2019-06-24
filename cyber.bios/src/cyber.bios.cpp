@@ -4,7 +4,6 @@
 #include <cyber.token/cyber.token.hpp>
 
 #include <eosio/system.hpp>
-#include <eosio/transaction.hpp>
 
 eosio::symbol core_symbol() {
     const static auto sym = cyber::config::system_token;
@@ -33,35 +32,31 @@ void bios::onblock(ignore<block_header> header) {
     _ds >> timestamp >> producer;
     INLINE_ACTION_SENDER(govern, onblock)(govern_name, {{govern_name, active_name}}, {producer});
     //TODO: update names
+}
 
+void bios::checkwin() {
     auto now = eosio::current_time_point();
     auto state = state_singleton(_self, _self.value);
-    bool exists = state.exists();
-    auto s = exists ? state.get() : state_info{now};
+    auto s = state.get_or_create(_self, state_info{now});
 
-    if (exists) {
-        auto diff = now - s.last_close_bid;
-        eosio::check(diff.to_seconds() >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
-        if (diff.to_seconds() > min_time_from_last_win) {
-            name_bid_table bids(_self, _self.value);
-            auto idx = bids.get_index<"highbid"_n>();
-            auto highest = idx.lower_bound( std::numeric_limits<uint64_t>::max()/2 );
-            if( highest != idx.end() && highest->high_bid > 0 &&
-                (now - highest->last_bid_time).to_seconds() > min_time_from_last_bid) {
-                s.last_close_bid = now;
-                idx.modify( highest, same_payer, [&]( auto& b ){
-                    b.high_bid = -b.high_bid;
-                });
-            }
+    if ((now - s.last_close_bid).to_seconds() > min_time_from_last_win) {
+        name_bid_table bids(_self, _self.value);
+        auto idx = bids.get_index<"highbid"_n>();
+        auto highest = idx.lower_bound( std::numeric_limits<uint64_t>::max()/2 );
+        if( highest != idx.end() && highest->high_bid > 0 &&
+            (now - highest->last_bid_time).to_seconds() > min_time_from_last_bid) {
+            s.last_close_bid = now;
             state.set(s, _self);
+            idx.modify( highest, same_payer, [&]( auto& b ){
+                b.high_bid = -b.high_bid;
+            });
         }
-    } else {
-        state.set(s, _self);
     }
 }
 
 void bios::bidname( name bidder, name newname, eosio::asset bid ) {
    require_auth( bidder );
+   checkwin();
 
    eosio::check( newname.suffix() == newname, "you can only bid on top-level suffix" );
 
@@ -92,11 +87,11 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
       eosio::check( bid.amount - current->high_bid > (current->high_bid / 10), "must increase bid by 10%" );
       eosio::check( current->high_bidder != bidder, "account is already highest bidder" );
 
-      bid_refund_table refunds_table(_self, newname.value);
+      bid_refund_table refunds_table(_self, _self.value);
 
       auto it = refunds_table.find( current->high_bidder.value );
       if ( it != refunds_table.end() ) {
-         refunds_table.modify( it, /*same_payer*/bidder, [&](auto& r) {
+         refunds_table.modify( it, same_payer, [&](auto& r) {
                r.amount += asset( current->high_bid, core_symbol() );
             });
       } else {
@@ -106,16 +101,6 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
             });
       }
 
-      transaction t;
-      t.actions.emplace_back( permission_level{_self, active_name},
-                              _self, "bidrefund"_n,
-                              std::make_tuple( current->high_bidder, newname )
-      );
-      t.delay_sec = 0;
-      uint128_t deferred_id = (uint128_t(newname.value) << 64) | current->high_bidder.value;
-//      cancel_deferred( deferred_id );
-      t.send( deferred_id, bidder );
-
       bids.modify( current, bidder, [&]( auto& b ) {
          b.high_bidder = bidder;
          b.high_bid = bid.amount;
@@ -124,15 +109,14 @@ void bios::bidname( name bidder, name newname, eosio::asset bid ) {
    }
 }
 
-void bios::bidrefund( name bidder, name newname ) {
-   require_auth( _self );
-
-   bid_refund_table refunds_table(_self, newname.value);
+void bios::bidrefund( name bidder ) {
+   checkwin();
+   bid_refund_table refunds_table(_self, _self.value);
    auto it = refunds_table.find( bidder.value );
-   eosio::check( it != refunds_table.end(), "refund not found" );
+   eosio::check( it != refunds_table.end(), "Nothing to refund" );
    INLINE_ACTION_SENDER(eosio::token, transfer)(
         token_name, { {names_name, active_name}, {bidder, active_name} },
-        { names_name, bidder, asset(it->amount), std::string("refund bid on name ")+(name{newname}).to_string() }
+        { names_name, bidder, asset(it->amount), "refund bid on name" }
    );
    refunds_table.erase( it );
 }
@@ -163,4 +147,4 @@ void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore
 
 }
 
-EOSIO_DISPATCH( cyber::bios, (newaccount)(setprods)(setparams)(reqauth)(setabi)(setcode)(onblock)(bidname)(bidrefund) )
+EOSIO_DISPATCH( cyber::bios, (newaccount)(setprods)(setparams)(reqauth)(setabi)(setcode)(onblock)(checkwin)(bidname)(bidrefund) )

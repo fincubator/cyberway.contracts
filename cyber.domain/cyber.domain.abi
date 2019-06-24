@@ -55,8 +55,7 @@
             "name": "biddmrefund",
             "base": "",
             "fields": [
-                {"type": "name",        "name": "bidder"},
-                {"type": "domain_name", "name": "name"}
+                {"type": "name",        "name": "bidder"}
             ]
         },{
             "name": "checkwin",
@@ -81,8 +80,7 @@
             "base": "",
             "fields": [
                 {"type": "uint64",         "name": "id"},
-                {"type": "time_point_sec", "name": "last_win"},
-                {"type": "time_point_sec", "name": "last_checkwin"}
+                {"type": "time_point_sec", "name": "last_win"}
             ]
         },{
             "name": "domain_bid",

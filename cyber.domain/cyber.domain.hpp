@@ -50,10 +50,9 @@ using domain_bid_refund_tbl = eosio::multi_index< "dbidrefund"_n, domain_bid_ref
 
 struct [[eosio::table("state"), eosio::contract("cyber.domain")]] domain_bid_state {
     time_point_sec last_win;
-    time_point_sec last_checkwin;
 
     // explicit serialization macro is not necessary, used here only to improve compilation time
-    EOSLIB_SERIALIZE(domain_bid_state, (last_win)(last_checkwin))
+    EOSLIB_SERIALIZE(domain_bid_state, (last_win))
 };
 using state_singleton = eosio::singleton<"dbidstate"_n, domain_bid_state>;
 
@@ -69,7 +68,7 @@ public:
 
     [[eosio::action]] void checkwin();
     [[eosio::action]] void biddomain(name bidder, const domain_name& name, asset bid);
-    [[eosio::action]] void biddmrefund(name bidder, const domain_name& name);
+    [[eosio::action]] void biddmrefund(name bidder);
 
     // Ensures that at execution time given domains linked to specified accounts and usernames exist.
     // Also can be parsed by explorers to resolve account_names to full names.

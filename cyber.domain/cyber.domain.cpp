@@ -2,7 +2,6 @@
 #include <common/config.hpp>
 #include <cyber.token/cyber.token.hpp>
 #include <eosio/eosio.hpp>
-#include <eosio/transaction.hpp>
 #include <eosio/dispatcher.hpp>
 
 #include "domain_validate.cpp"
@@ -16,7 +15,6 @@ const uint32_t seconds_per_day       = 24 * seconds_per_hour;
 const uint32_t seconds_per_year      = 365 * seconds_per_day;   // note: it's 52*7=364 in eos
 
 // config
-const uint32_t checkwin_interval = seconds_per_hour;
 const uint32_t min_time_from_last_win = seconds_per_day;
 const uint32_t min_time_from_last_bid = seconds_per_day;
 
@@ -33,48 +31,32 @@ symbol core_symbol() {
 }
 
 void domain::checkwin() {
-    require_auth(_self);
     const auto now = eosio::current_time_point();
 
     auto state = state_singleton(_self, _self.value);
-    bool exists = state.exists();
-    auto s = exists ? state.get() : domain_bid_state{now, now};
-    if (exists) {
-        auto diff = now - s.last_checkwin;
-        eosio::check(diff.to_seconds() >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
-        if (diff.to_seconds() != checkwin_interval) {
-            eosio::check(diff.to_seconds() > checkwin_interval, "checkwin called too early");
-            print("checkwin delayed\n");
+    auto s = state.get_or_create(_self, domain_bid_state{now});
+    if ((now - s.last_win).to_seconds() > min_time_from_last_win) {
+        domain_bid_tbl bids(_self, _self.value);
+        auto idx = bids.get_index<"highbid"_n>();
+        auto highest = idx.begin();
+        if (highest != idx.end() &&
+            highest->high_bid > 0 &&
+            (now - highest->last_bid_time).to_seconds() > min_time_from_last_bid
+        ) {
+            s.last_win = tnow;
+            state.set(s, _self);
+            idx.modify(highest, same_payer, [&](auto& b) {
+                b.high_bid = -b.high_bid;
+            });
         }
-        if ((now - s.last_win).to_seconds() > min_time_from_last_win) {
-            domain_bid_tbl bids(_self, _self.value);
-            auto idx = bids.get_index<"highbid"_n>();
-            auto highest = idx.begin();
-            if (highest != idx.end() &&
-                highest->high_bid > 0 &&
-                (now - highest->last_bid_time).to_seconds() > min_time_from_last_bid
-            ) {
-                s.last_win = now;
-                idx.modify(highest, same_payer, [&](auto& b) {
-                    b.high_bid = -b.high_bid;
-                });
-            }
-        }
-        s.last_checkwin = now;
     }
-    state.set(s, _self);
-
-    print("schedule next\n");
-    auto sender_id = s.last_checkwin.sec_since_epoch();
-    transaction tx;
-    tx.actions.emplace_back(action{permission_level(_self, active_permission), _self, "checkwin"_n, std::tuple<>()});
-    tx.delay_sec = checkwin_interval;
-    tx.send(sender_id, _self);
 }
 
 
 void domain::biddomain(name bidder, const domain_name& name, asset bid) {
     require_auth(bidder);
+    checkwin();
+
     validate_domain_name(name);
     eosio::check(!is_domain(name), "domain already exists");
     eosio::check(bid.symbol == core_symbol(), "asset must be system token");
@@ -122,27 +104,18 @@ void domain::biddomain(name bidder, const domain_name& name, asset bid) {
             });
         }
 
-        transaction tx;
-        tx.actions.emplace_back(permission_level{_self, active_permission},
-            _self, "biddmrefund"_n, std::make_tuple(current->high_bidder, name)
-        );
-        tx.delay_sec = 0;
-        uint128_t deferred_id = current->high_bidder.value; // note: high 64 bits was newname.value
-        cancel_deferred(deferred_id);
-        tx.send(deferred_id, bidder);
-
         idx.modify(current, bidder, set_bid);
     }
 }
 
-// note: domain name is only used for transfer memo
-void domain::biddmrefund(name bidder, const domain_name& name) {
-    domain_bid_refund_tbl refunds(_self, _self.value);  // the scope was newname.value, but we have string, so simplify
+void domain::biddmrefund(name bidder) {
+    checkwin();
+    domain_bid_refund_tbl refunds(_self, _self.value);
     auto itr = refunds.find(bidder.value);
-    eosio::check(itr != refunds.end(), "refund not found");
+    eosio::check(itr != refunds.end(), "Nothing to refund");
     INLINE_ACTION_SENDER(eosio::token, transfer)(
         token_account, {{names_account, active_permission}, {bidder, active_permission}},
-        {names_account, bidder, asset(itr->amount), std::string("refund bid on domain ")+name}
+        {names_account, bidder, asset(itr->amount), "refund bid on domain"}
     );
     refunds.erase(itr);
 }

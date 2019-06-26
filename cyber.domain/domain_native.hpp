@@ -1,6 +1,6 @@
 #pragma once
-#include <eosiolib/domain.hpp>
-#include <eosiolib/contract.hpp>
+#include <eosio/domain.hpp>
+#include <eosio/contract.hpp>
 
 namespace eosiosystem {
 

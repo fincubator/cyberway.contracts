@@ -4,7 +4,9 @@
  */
 #undef CHAINDB_ANOTHER_CONTRACT_PROTECT
 #define CHAINDB_ANOTHER_CONTRACT_PROTECT(_CHECK, _MSG)
-   
+
+#include <eosio/check.hpp>
+#include <eosio/system.hpp>
 #include <algorithm>
 #include <cyber.stake/cyber.stake.hpp>
 #include <cyber.token/cyber.token.hpp>
@@ -22,7 +24,7 @@ void stake::set_votes(symbol_code token_code, const std::map<name, int64_t>& vot
 
     stats stats_table(table_owner, table_owner.value); 
     auto stat = stats_table.find(token_code.raw()); 
-    eosio_assert(stat != stats_table.end(), "stat doesn't exist"); 
+    eosio::check(stat != stats_table.end(), "stat doesn't exist");
     stats_table.modify(stat, name(), [votes_changes_sum](auto& s) { s.total_votes += votes_changes_sum; });
     
     auto cur_supply = eosio::token::get_supply(config::token_name, token_code).amount;
@@ -30,7 +32,7 @@ void stake::set_votes(symbol_code token_code, const std::map<name, int64_t>& vot
     auto cands_idx = candidates_table.get_index<"bykey"_n>();
     for (const auto& v : votes_changes) {
         auto cand = cands_idx.find(std::make_tuple(token_code, v.first));
-        eosio_assert(cand != cands_idx.end(), ("candidate " + v.first.to_string() + " doesn't exist").c_str());
+        eosio::check(cand != cands_idx.end(), ("candidate " + v.first.to_string() + " doesn't exist").c_str());
         cands_idx.modify(cand, name(), [&](auto& a) { a.set_votes(a.votes + v.second, cur_supply); });
     }
 }
@@ -56,7 +58,7 @@ void stake::structures::candidate::set_votes(int64_t arg, int64_t cur_supply) {
 }
 
 void stake::structures::candidate::pick(int64_t cur_supply) {
-    latest_pick = time_point_sec(now());
+    latest_pick = eosio::current_time_point();
     update_priority(cur_supply, true);
 }
 
@@ -69,9 +71,9 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
     
     auto agent = get_agent_itr(token_code, agents_idx, agent_name);
     auto total_funds = agent->get_total_funds();
-    eosio_assert((total_funds == 0) == (agent->shares_sum == 0), "SYSTEM: incorrect total_funds or shares_sum");
+    eosio::check((total_funds == 0) == (agent->shares_sum == 0), "SYSTEM: incorrect total_funds or shares_sum");
     auto own_funds = total_funds && agent->shares_sum ? safe_prop(total_funds, agent->own_share, agent->shares_sum) : 0;
-    eosio_assert((own_funds >= agent->min_own_staked) || refill, "insufficient agent funds");
+    eosio::check((own_funds >= agent->min_own_staked) || refill, "insufficient agent funds");
     if(amount == 0)
         return 0;
     auto remaining_amount = amount;
@@ -80,15 +82,15 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
     while ((grant_itr != grants_idx.end()) && (grant_itr->token_code   == token_code) && (grant_itr->grantor_name == agent_name)) {
         auto to_delegate = safe_pct(amount, grant_itr->pct);
         remaining_amount -= to_delegate;
-        eosio_assert(remaining_amount >= 0, "SYSTEM: incorrect remaining_amount");
+        eosio::check(remaining_amount >= 0, "SYSTEM: incorrect remaining_amount");
         auto delegated = delegate_traversal(token_code, agents_idx, grants_idx, grant_itr->agent_name, to_delegate, votes_changes, true);
         grants_idx.modify(grant_itr, name(), [&](auto& g) { g.share += delegated; });
         ++grant_itr;
     }
-    eosio_assert(remaining_amount <= amount, "SYSTEM: incorrect remaining_amount");
+    eosio::check(remaining_amount <= amount, "SYSTEM: incorrect remaining_amount");
     
     auto ret = total_funds && agent->shares_sum ? safe_prop(agent->shares_sum, amount, total_funds) : amount;
-    eosio_assert(std::numeric_limits<int64_t>::max() - agent->shares_sum >= ret, "shares_sum overflow");
+    eosio::check(std::numeric_limits<int64_t>::max() - agent->shares_sum >= ret, "shares_sum overflow");
 
     agents_idx.modify(agent, name(), [&](auto& a) {
         a.balance += remaining_amount;
@@ -105,12 +107,12 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
 void stake::add_proxy(symbol_code token_code, grants& grants_table, const structures::agent& grantor_as_agent, const structures::agent& agent, 
         int16_t pct, int64_t share, int16_t break_fee, int64_t break_min_own_staked) {
 
-    auto now = ::now();
-    eosio_assert(agent.last_proxied_update == time_point_sec(now), 
-        ("SYSTEM: outdated last_proxied_update val: last update = " + 
-        std::to_string(agent.last_proxied_update.sec_since_epoch()) + 
-        ", now = " + std::to_string(now)).c_str());
-    eosio_assert(grantor_as_agent.proxy_level > agent.proxy_level, 
+    auto now = eosio::current_time_point();
+    eosio::check(agent.last_proxied_update == now,
+        ("SYSTEM: outdated last_proxied_update val: last update = " +
+        std::to_string(agent.last_proxied_update.sec_since_epoch()) +
+        ", now = " + std::to_string(now.sec_since_epoch())).c_str());
+    eosio::check(grantor_as_agent.proxy_level > agent.proxy_level,
         ("incorrect proxy levels: grantor " + std::to_string(grantor_as_agent.proxy_level) + 
         ", agent " + std::to_string(agent.proxy_level)).c_str());
     grants_table.emplace(grantor_as_agent.account, [&]( auto &item ) { item = structures::grant {
@@ -127,7 +129,7 @@ void stake::add_proxy(symbol_code token_code, grants& grants_table, const struct
  
 void stake::delegate(name grantor_name, name agent_name, asset quantity) {
     require_auth(grantor_name);
-    eosio_assert(quantity.amount > 0, "quantity must be positive");
+    eosio::check(quantity.amount > 0, "quantity must be positive");
     params params_table(table_owner, table_owner.value);
      auto token_code = quantity.symbol.code();
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
@@ -138,7 +140,7 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     
     auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);   
-    eosio_assert(quantity.amount <= grantor_as_agent->balance, "insufficient funds");
+    eosio::check(quantity.amount <= grantor_as_agent->balance, "insufficient funds");
     auto agent = get_agent_itr(token_code, agents_idx, agent_name);
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
@@ -157,7 +159,7 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
     }
     
     if (delegated) {
-        eosio_assert(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
+        eosio::check(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
         add_proxy(token_code, grants_table, *grantor_as_agent, *agent, 0, delegated);
     }
 
@@ -169,18 +171,18 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
 
 void stake::recall(name grantor_name, name agent_name, symbol_code token_code, int16_t pct) {
     require_auth(grantor_name);
-    ::recall_stake_proxied(token_code.raw(), grantor_name.value, agent_name.value, pct);
+    eosio::recall_stake_proxied(token_code, grantor_name, agent_name, pct);
 }
 
 void stake::check_grant_terms(const structures::agent& agent, int16_t break_fee, int64_t break_min_own_staked) {
-    eosio_assert(break_fee < 0 || agent.fee <= break_fee, "break_fee can't be less than current agent fee");
-    eosio_assert(break_min_own_staked <= agent.min_own_staked, "break_min_own_staked can't be greater than current min_own_staked value");
+    eosio::check(break_fee < 0 || agent.fee <= break_fee, "break_fee can't be less than current agent fee");
+    eosio::check(break_min_own_staked <= agent.min_own_staked, "break_min_own_staked can't be greater than current min_own_staked value");
 }
 
 void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_code, int16_t pct, int16_t break_fee, int64_t break_min_own_staked) {
-    eosio_assert(0 <= pct && pct <= config::_100percent, "pct must be between 0% and 100% (0-10000)");
-    eosio_assert(0 <= break_fee && break_fee <= config::_100percent, "break_fee must be between 0% and 100% (0-10000)");
-    eosio_assert(0 <= break_min_own_staked, "break_min_own_staked can't be negative");
+    eosio::check(0 <= pct && pct <= config::_100percent, "pct must be between 0% and 100% (0-10000)");
+    eosio::check(0 <= break_fee && break_fee <= config::_100percent, "break_fee must be between 0% and 100% (0-10000)");
+    eosio::check(0 <= break_min_own_staked, "break_min_own_staked can't be negative");
     
     require_auth(grantor_name);
     params params_table(table_owner, table_owner.value);
@@ -221,11 +223,11 @@ void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_c
             pct_sum += grant_itr->pct;
             ++grant_itr;
         }
-        eosio_assert(pct_sum <= config::_100percent, "too high pct value\n");
+        eosio::check(pct_sum <= config::_100percent, "too high pct value\n");
     }
     if (!agent_found && pct) {
         auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);
-        eosio_assert(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
+        eosio::check(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
         update_stake_proxied(token_code, agent_name);
         auto agent = get_agent_itr(token_code, agents_idx, agent_name);
         check_grant_terms(*agent, break_fee, break_min_own_staked);
@@ -234,7 +236,7 @@ void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_c
         changed = true;
     }
     
-    eosio_assert(changed, "grant terms has not been changed");
+    eosio::check(changed, "grant terms has not been changed");
 }
 
 void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
@@ -268,12 +270,12 @@ void stake::claim(name account, symbol_code token_code) {
 }
 
 void stake::withdraw(name account, asset quantity) {
-    eosio_assert(quantity.amount > 0, "must withdraw positive quantity");
+    eosio::check(quantity.amount > 0, "must withdraw positive quantity");
     update_payout(account, quantity);
 }
 
 void stake::cancelwd(name account, asset quantity) {
-    eosio_assert(quantity.amount >= 0, "quantity can't be negative");
+    eosio::check(quantity.amount >= 0, "quantity can't be negative");
     quantity.amount = -quantity.amount;
     update_payout(account, quantity);
 }
@@ -299,20 +301,20 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
     auto grants_idx = grants_table.get_index<"bykey"_n>();
     
     auto total_funds = agent->get_total_funds();
-    eosio_assert((total_funds == 0) == (agent->shares_sum == 0), "SYSTEM: incorrect total_funds or shares_sum");
+    eosio::check((total_funds == 0) == (agent->shares_sum == 0), "SYSTEM: incorrect total_funds or shares_sum");
     
     int64_t balance_diff = 0;
     int64_t shares_diff = 0;
     if (quantity.amount > 0) {
-        eosio_assert(quantity.amount <= agent->balance, "insufficient funds");
+        eosio::check(quantity.amount <= agent->balance, "insufficient funds");
 
-        eosio_assert(total_funds > 0, "no funds to withdrawal");
+        eosio::check(total_funds > 0, "no funds to withdrawal");
         auto own_funds = safe_prop(total_funds, agent->own_share, agent->shares_sum);
-        eosio_assert(own_funds - quantity.amount >= agent->min_own_staked, "insufficient agent funds");
+        eosio::check(own_funds - quantity.amount >= agent->min_own_staked, "insufficient agent funds");
 
         balance_diff = -quantity.amount;
         shares_diff = -safe_prop(agent->shares_sum, quantity.amount, total_funds);
-        eosio_assert(-shares_diff <= agent->own_share, "SYSTEM: incorrect shares_to_withdraw val");
+        eosio::check(-shares_diff <= agent->own_share, "SYSTEM: incorrect shares_to_withdraw val");
         
         payouts_table.emplace(account, [&]( auto &item ) { item = structures::payout {
             .id = payouts_table.available_primary_key(),
@@ -320,7 +322,7 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
             .account = account,
             .balance = quantity.amount,
             .steps_left = param.payout_steps_num,
-            .last_step = time_point_sec(::now())
+            .last_step = eosio::current_time_point()
         };});
     }
     else {
@@ -334,8 +336,8 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
             amount_sum += payout_itr->balance;
             ++payout_itr;
         }
-        eosio_assert(amount_sum || quantity.amount, "nothing to cancel");
-        eosio_assert(amount_sum >= quantity.amount, "insufficient funds");
+        eosio::check(amount_sum || quantity.amount, "nothing to cancel");
+        eosio::check(amount_sum >= quantity.amount, "insufficient funds");
         payout_itr = payout_lb_itr;
         while ((payout_itr != acc_index.end()) && (payout_itr->token_code == token_code) && (payout_itr->account == account)) {
             auto cur_amount = quantity.amount ? safe_prop(payout_itr->balance, quantity.amount, amount_sum) : payout_itr->balance;
@@ -351,7 +353,7 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
         //TODO:? due to rounding, balance_diff usually will be less than requested. should we do something about it?
         shares_diff = total_funds ? safe_prop(agent->shares_sum, balance_diff, total_funds) : balance_diff;
     }
-    eosio_assert(std::numeric_limits<int64_t>::max() - agent->shares_sum >= shares_diff, "shares_sum overflow");
+    eosio::check(std::numeric_limits<int64_t>::max() - agent->shares_sum >= shares_diff, "shares_sum overflow");
     agents_idx.modify(agent, name(), [&](auto& a) {
         a.balance += balance_diff;
         a.shares_sum += shares_diff;
@@ -364,16 +366,16 @@ void stake::update_payout(name account, asset quantity, bool claim_mode) {
 }
 
 void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t payout_step_length, symbol sym, bool claim_mode) {
-    const int64_t now = ::now();
-    eosio_assert(payout_step_length > 0, "SYSTEM: incorrect payout_step_length val");
+    const auto now = eosio::current_time_point();
+    eosio::check(payout_step_length > 0, "SYSTEM: incorrect payout_step_length val");
     
     auto acc_index = payouts_table.get_index<"payoutacc"_n>();
     auto payout_itr = acc_index.lower_bound(std::make_tuple(sym.code(), account)); 
     int64_t amount = 0;
     while ((payout_itr != acc_index.end()) && (payout_itr->token_code == sym.code()) && (payout_itr->account == account)) {
-        auto seconds_passed = now - payout_itr->last_step.utc_seconds;
+        auto seconds_passed = (now - payout_itr->last_step).to_seconds();
         
-        eosio_assert(seconds_passed >= 0, "SYSTEM: incorrect seconds_passed val");
+        eosio::check(seconds_passed >= 0, "SYSTEM: incorrect seconds_passed val");
         auto steps_passed = std::min(seconds_passed / payout_step_length, static_cast<int64_t>(payout_itr->steps_left));
         if (steps_passed) {
             if(steps_passed != payout_itr->steps_left) {
@@ -381,7 +383,7 @@ void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t 
                 acc_index.modify(payout_itr, name(), [&](auto& p) {
                     p.balance -= cur_amount;
                     p.steps_left -= steps_passed;
-                    p.last_step = time_point_sec(p.last_step.utc_seconds + (steps_passed * payout_step_length));
+                    p.last_step = p.last_step + (steps_passed * payout_step_length);
                 });
                 amount += cur_amount;
                 ++payout_itr;
@@ -399,22 +401,22 @@ void stake::send_scheduled_payout(payouts& payouts_table, name account, int64_t 
             {_self, account, asset(amount, sym), "unstaked tokens"});
     }
     else {
-        eosio_assert(!claim_mode, "nothing to claim");
+        eosio::check(!claim_mode, "nothing to claim");
     }
 }
 
 void stake::setproxyfee(name account, symbol_code token_code, int16_t fee) {
-    eosio_assert(0 <= fee && fee <= config::_100percent, "fee must be between 0% and 100% (0-10000)");
+    eosio::check(0 <= fee && fee <= config::_100percent, "fee must be between 0% and 100% (0-10000)");
     staking_exists(token_code);
     modify_agent(account, token_code, [fee](auto& a) { a.fee = fee; } );
 }
 
 void stake::setminstaked(name account, symbol_code token_code, int64_t min_own_staked) {
-    eosio_assert(0 <= min_own_staked, "min_own_staked can't be negative");
+    eosio::check(0 <= min_own_staked, "min_own_staked can't be negative");
     params params_table(table_owner, table_owner.value);
     auto min_own_staked_for_election = params_table.get(token_code.raw(), "no staking for token").min_own_staked_for_election;
     modify_agent(account, token_code, [min_own_staked, min_own_staked_for_election](auto& a) {
-        eosio_assert(a.proxy_level || min_own_staked >= min_own_staked_for_election, 
+        eosio::check(a.proxy_level || min_own_staked >= min_own_staked_for_election, 
             "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
         a.min_own_staked = min_own_staked;
     });
@@ -433,13 +435,13 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
     
-    eosio_assert(level <= param.max_proxies.size(), "level too high");
+    eosio::check(level <= param.max_proxies.size(), "level too high");
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
-    eosio_assert(level || agent->min_own_staked >= param.min_own_staked_for_election, 
+    eosio::check(level || agent->min_own_staked >= param.min_own_staked_for_election,
             "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
-    eosio_assert(level != agent->proxy_level, "proxy level has not been changed");
+    eosio::check(level != agent->proxy_level, "proxy level has not been changed");
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
     uint8_t proxies_num = 0;
@@ -448,8 +450,8 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
          ++proxies_num;
          ++grant_itr;
     }
-    eosio_assert(level || !proxies_num, "can't set an ultimate level because the user has a proxy");
-    eosio_assert(!level || proxies_num <= param.max_proxies[level - 1], "can't set proxy level, user has too many proxies");
+    eosio::check(level || !proxies_num, "can't set an ultimate level because the user has a proxy");
+    eosio::check(!level || proxies_num <= param.max_proxies[level - 1], "can't set proxy level, user has too many proxies");
     
     candidates candidates_table(table_owner, table_owner.value);
     auto cands_idx = candidates_table.get_index<"bykey"_n>();
@@ -458,7 +460,7 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
         
         stats stats_table(table_owner, table_owner.value);
         auto stat = stats_table.find(token_code.raw());
-        eosio_assert(stat != stats_table.end(), "stat doesn't exist");
+        eosio::check(stat != stats_table.end(), "stat doesn't exist");
         stats_table.modify(stat, name(), [&](auto& s) { s.total_votes -= agent->balance; });
     }
     else if (agent->proxy_level && !level) {
@@ -467,7 +469,7 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
                 .id = candidates_table.available_primary_key(),
                 .token_code = token_code,
                 .account = account,
-                .latest_pick = time_point_sec(::now())
+                .latest_pick = eosio::current_time_point()
             };
         });
         set_votes(token_code, std::map<name, int64_t>{{account, agent->balance}});
@@ -484,18 +486,18 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
 {
     auto token_code = token_symbol.code();
     eosio::print("create stake for ", token_code, "\n");
-    eosio_assert(max_proxies.size(), "no proxy levels are specified");
-    eosio_assert(max_proxies.size() < std::numeric_limits<uint8_t>::max(), "too many proxy levels");
+    eosio::check(max_proxies.size(), "no proxy levels are specified");
+    eosio::check(max_proxies.size() < std::numeric_limits<uint8_t>::max(), "too many proxy levels");
     if (max_proxies.size() > 1)
         for (size_t i = 1; i < max_proxies.size(); i++) {
-            eosio_assert(max_proxies[i - 1] >= max_proxies[i], "incorrect proxy levels");
+            eosio::check(max_proxies[i - 1] >= max_proxies[i], "incorrect proxy levels");
         }
-    eosio_assert(payout_step_length > 0, "incorrect payout_step_length");
-    eosio_assert(min_own_staked_for_election >= 0, "incorrect min_own_staked_for_election");
+    eosio::check(payout_step_length > 0, "incorrect payout_step_length");
+    eosio::check(min_own_staked_for_election >= 0, "incorrect min_own_staked_for_election");
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
     params params_table(table_owner, table_owner.value);
-    eosio_assert(params_table.find(token_code.raw()) == params_table.end(), "already exists");
+    eosio::check(params_table.find(token_code.raw()) == params_table.end(), "already exists");
     
     params_table.emplace(issuer, [&](auto& p) { p = {
         .id = token_code.raw(),
@@ -507,7 +509,7 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies,
     };});
         
     stats stats_table(table_owner, table_owner.value);
-    eosio_assert(stats_table.find(token_code.raw()) == stats_table.end(), "SYSTEM: already exists");
+    eosio::check(stats_table.find(token_code.raw()) == stats_table.end(), "SYSTEM: already exists");
     stats_table.emplace(issuer, [&](auto& s) { s = {
         .id = token_code.raw(),
         .token_code = token_code,
@@ -521,7 +523,7 @@ void stake::enable(symbol token_symbol) {
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
     modify_stat(token_code, [&](auto& s) {
-        eosio_assert(!s.enabled, "already enabled");
+        eosio::check(!s.enabled, "already enabled");
         s.enabled = true;
     });
 }
@@ -535,24 +537,24 @@ void stake::open(name owner, symbol_code token_code, std::optional<name> ram_pay
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
-    eosio_assert(agents_idx.find(std::make_tuple(token_code, owner)) == agents_idx.end(), "agent already exists");
+    eosio::check(agents_idx.find(std::make_tuple(token_code, owner)) == agents_idx.end(), "agent already exists");
     emplace_agent(owner, agents_table, param, actual_ram_payer);
 }
 
 stake::agents_idx_t::const_iterator stake::get_agent_itr(symbol_code token_code, stake::agents_idx_t& agents_idx, name agent_name) {
     auto ret = agents_idx.find(std::make_tuple(token_code, agent_name));
-    eosio_assert(ret != agents_idx.end(), ("agent " + agent_name.to_string() + " doesn't exist").c_str());
+    eosio::check(ret != agents_idx.end(), ("agent " + agent_name.to_string() + " doesn't exist").c_str());
     return ret;
 }
 
 void stake::emplace_agent(name account, agents& agents_table, const structures::param& param, name ram_payer) {
-    eosio_assert(is_account(account), "account does not exist");
+    eosio::check(is_account(account), "account does not exist");
     agents_table.emplace(ram_payer, [&](auto& a) { a = {
         .id = agents_table.available_primary_key(),
         .token_code = param.token_symbol.code(),
         .account = account,
         .proxy_level = static_cast<uint8_t>(param.max_proxies.size()),
-        .last_proxied_update = time_point_sec(::now())
+        .last_proxied_update = eosio::current_time_point()
     };});
 }
 
@@ -564,7 +566,7 @@ void stake::updatefunds(name account, symbol_code token_code) {
 }
 
 void stake::reward(std::vector<std::pair<name, int64_t> > rewards, symbol sym) {
-    eosio_assert(rewards.size(), "no rewards"); 
+    eosio::check(rewards.size(), "no rewards");
     auto token_code = sym.code();
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
@@ -577,7 +579,7 @@ void stake::reward(std::vector<std::pair<name, int64_t> > rewards, symbol sym) {
     
     int64_t rewards_sum = 0;
     for (const auto& r : rewards) {
-        eosio_assert(r.second > 0, "amount must be positive"); 
+        eosio::check(r.second > 0, "amount must be positive");
         rewards_sum += r.second; // do we need an overflow check here?
         auto agent = get_agent_itr(token_code, agents_idx, r.first);
         int64_t balance_diff = 0;
@@ -614,7 +616,7 @@ void stake::reward(std::vector<std::pair<name, int64_t> > rewards, symbol sym) {
     
     modify_stat(token_code, [&](auto& s) {
         s.total_staked += quantity.amount;
-        s.last_reward = time_point_sec(::now());
+        s.last_reward = eosio::current_time_point();
     });
     
     set_votes(token_code, votes_changes);
@@ -629,7 +631,7 @@ void stake::pick(symbol_code token_code, std::vector<name> accounts) {
     auto cands_idx = candidates_table.get_index<"bykey"_n>();
     for (auto& account : accounts) {
         auto cand = cands_idx.find(std::make_tuple(token_code, account));
-        eosio_assert(cand != cands_idx.end(), ("candidate " + account.to_string() + " doesn't exist").c_str());
+        eosio::check(cand != cands_idx.end(), ("candidate " + account.to_string() + " doesn't exist").c_str());
         cands_idx.modify(cand, name(), [cur_supply](auto& a) { a.pick(cur_supply); });
     }
 }

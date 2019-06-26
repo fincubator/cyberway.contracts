@@ -1,9 +1,9 @@
 #include "cyber.domain.hpp"
 #include <common/config.hpp>
 #include <cyber.token/cyber.token.hpp>
-#include <eosiolib/eosio.hpp>
-#include <eosiolib/transaction.hpp>
-#include <eosiolib/dispatcher.hpp>
+#include <eosio/eosio.hpp>
+#include <eosio/transaction.hpp>
+#include <eosio/dispatcher.hpp>
 
 #include "domain_validate.cpp"
 
@@ -34,39 +34,38 @@ symbol core_symbol() {
 
 void domain::checkwin() {
     require_auth(_self);
-    const int64_t now = ::now();                // int64 to prevent overflows (can only happen if something broken)
-    auto tnow = time_point_sec(now);
+    const auto now = eosio::current_time_point();
 
     auto state = state_singleton(_self, _self.value);
     bool exists = state.exists();
-    auto s = exists ? state.get() : domain_bid_state{tnow, tnow};
+    auto s = exists ? state.get() : domain_bid_state{now, now};
     if (exists) {
-        auto diff = now - s.last_checkwin.utc_seconds;
-        eosio_assert(diff >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
-        if (diff != checkwin_interval) {
-            eosio_assert(diff > checkwin_interval, "checkwin called too early");
+        auto diff = now - s.last_checkwin;
+        eosio::check(diff.to_seconds() >= 0, "SYSTEM: last_checkwin is in future");  // must be impossible
+        if (diff.to_seconds() != checkwin_interval) {
+            eosio::check(diff.to_seconds() > checkwin_interval, "checkwin called too early");
             print("checkwin delayed\n");
         }
-        if (now - s.last_win.utc_seconds > min_time_from_last_win) {
+        if ((now - s.last_win).to_seconds() > min_time_from_last_win) {
             domain_bid_tbl bids(_self, _self.value);
             auto idx = bids.get_index<"highbid"_n>();
             auto highest = idx.begin();
             if (highest != idx.end() &&
                 highest->high_bid > 0 &&
-                now - highest->last_bid_time.utc_seconds > min_time_from_last_bid
+                (now - highest->last_bid_time).to_seconds() > min_time_from_last_bid
             ) {
-                s.last_win = tnow;
+                s.last_win = now;
                 idx.modify(highest, same_payer, [&](auto& b) {
                     b.high_bid = -b.high_bid;
                 });
             }
         }
-        s.last_checkwin = tnow;
+        s.last_checkwin = now;
     }
     state.set(s, _self);
 
     print("schedule next\n");
-    auto sender_id = s.last_checkwin.utc_seconds;
+    auto sender_id = s.last_checkwin.sec_since_epoch();
     transaction tx;
     tx.actions.emplace_back(action{permission_level(_self, active_permission), _self, "checkwin"_n, std::tuple<>()});
     tx.delay_sec = checkwin_interval;
@@ -77,9 +76,9 @@ void domain::checkwin() {
 void domain::biddomain(name bidder, const domain_name& name, asset bid) {
     require_auth(bidder);
     validate_domain_name(name);
-    eosio_assert(!is_domain(name), "domain already exists");
-    eosio_assert(bid.symbol == core_symbol(), "asset must be system token");
-    eosio_assert(bid.amount > 0, "insufficient bid");
+    eosio::check(!is_domain(name), "domain already exists");
+    eosio::check(bid.symbol == core_symbol(), "asset must be system token");
+    eosio::check(bid.amount > 0, "insufficient bid");
 
     INLINE_ACTION_SENDER(eosio::token, transfer)(
         token_account, {{bidder, active_permission}},
@@ -92,7 +91,7 @@ void domain::biddomain(name bidder, const domain_name& name, asset bid) {
     const auto set_bid = [&](auto& b) {
         b.high_bidder = bidder;
         b.high_bid = bid.amount;
-        b.last_bid_time = time_point_sec{::now()};
+        b.last_bid_time = eosio::current_time_point();
     };
     auto idx = bids.get_index<"domain"_n>();
     auto current = idx.find(name);
@@ -103,9 +102,9 @@ void domain::biddomain(name bidder, const domain_name& name, asset bid) {
             set_bid(b);
         });
     } else {
-        eosio_assert(current->high_bid > 0, "this auction has already closed");
-        eosio_assert((bid.amount - current->high_bid)*10 >= current->high_bid, "must increase bid by 10%");
-        eosio_assert(current->high_bidder != bidder, "account is already highest bidder");
+        eosio::check(current->high_bid > 0, "this auction has already closed");
+        eosio::check((bid.amount - current->high_bid)*10 >= current->high_bid, "must increase bid by 10%");
+        eosio::check(current->high_bidder != bidder, "account is already highest bidder");
 
         // the scope was newname.value, but we have string, so simplify.
         // downside: refund sum can be accumulated over several domains
@@ -140,7 +139,7 @@ void domain::biddomain(name bidder, const domain_name& name, asset bid) {
 void domain::biddmrefund(name bidder, const domain_name& name) {
     domain_bid_refund_tbl refunds(_self, _self.value);  // the scope was newname.value, but we have string, so simplify
     auto itr = refunds.find(bidder.value);
-    eosio_assert(itr != refunds.end(), "refund not found");
+    eosio::check(itr != refunds.end(), "refund not found");
     INLINE_ACTION_SENDER(eosio::token, transfer)(
         token_account, {{names_account, active_permission}, {bidder, active_permission}},
         {names_account, bidder, asset(itr->amount), std::string("refund bid on domain ")+name}
@@ -158,40 +157,40 @@ void domain_native::newdomain(name creator, const domain_name& name) {
             domain_bid_tbl bids(_self, _self.value);
             auto idx = bids.get_index<"domain"_n>();
             auto bid = idx.find(name);
-            eosio_assert(bid != idx.end(), "no active bid for domain");
-            eosio_assert(bid->high_bidder == creator, "only highest bidder can claim");
-            eosio_assert(bid->high_bid < 0, "auction for domain is not closed yet");
+            eosio::check(bid != idx.end(), "no active bid for domain");
+            eosio::check(bid->high_bidder == creator, "only highest bidder can claim");
+            eosio::check(bid->high_bid < 0, "auction for domain is not closed yet");
             idx.erase(bid);
         } else {
             // only domain owner can create subdomains
             const domain_name suffix = name.substr(dot+1, name.size()-dot-1);
-            eosio_assert(is_domain(suffix), "parent domain do not exists");
-            eosio_assert(creator == get_domain_owner(suffix), "only owner of parent domain can create subdomain");
+            eosio::check(is_domain(suffix), "parent domain do not exists");
+            eosio::check(creator == get_domain_owner(suffix), "only owner of parent domain can create subdomain");
         }
     }
 }
 
 void domain::declarenames(const std::vector<name_info>& domains) {
-    eosio_assert(domains.size(), "domains must not be empty");
+    eosio::check(domains.size(), "domains must not be empty");
     name prev_account;
     domain_name prev_domain;
     for (const auto& info: domains) {
         const auto& domain = info.domain;
         const auto& dacc = info.account;
         if (domain.size() == 0 && prev_domain.size() == 0) {
-            eosio_assert(dacc > prev_account, ".account values must be ordered ascending, no repeats allowed");
+            eosio::check(dacc > prev_account, ".account values must be ordered ascending, no repeats allowed");
             prev_account = dacc;
         } else {
-            eosio_assert(domain > prev_domain, ".domain values must be ordered ascending, no repeats allowed (except \"\")");
+            eosio::check(domain > prev_domain, ".domain values must be ordered ascending, no repeats allowed (except \"\")");
             prev_domain = domain;
             // TODO: it's handy to have domain name in assert messages
             validate_domain_name(domain);
-            eosio_assert(is_domain(domain), "domain doesn't exist");
-            eosio_assert(dacc == resolve_domain(domain), "domain resolves to different account");
+            eosio::check(is_domain(domain), "domain doesn't exist");
+            eosio::check(dacc == resolve_domain(domain), "domain resolves to different account");
         }
         for (const auto& u: info.users) {
             validate_username(u);
-            eosio_assert(is_username(dacc, u), "username doesn't exist in given scope");
+            eosio::check(is_username(dacc, u), "username doesn't exist in given scope");
         }
     }
 }

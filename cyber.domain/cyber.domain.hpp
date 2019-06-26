@@ -1,10 +1,10 @@
 #pragma once
 #include "domain_native.hpp"
-#include <eosiolib/domain.hpp>
-#include <eosiolib/asset.hpp>
-#include <eosiolib/name.hpp>
-#include <eosiolib/time.hpp>
-#include <eosiolib/singleton.hpp>
+#include <eosio/domain.hpp>
+#include <eosio/asset.hpp>
+#include <eosio/name.hpp>
+#include <eosio/time.hpp>
+#include <eosio/singleton.hpp>
 #include <string>
 
 namespace eosiosystem {

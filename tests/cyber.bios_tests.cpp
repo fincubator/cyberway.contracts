@@ -64,6 +64,18 @@ public:
                           ("bid", bid));
    }
 
+   action_result bidrefund(account_name bidder, account_name refunder = account_name()) {
+       if (!refunder) {
+          refunder = bidder;
+       }
+       return push_action(_code, N(bidrefund), refunder, mvo()
+                          ("bidder", bidder));
+   }
+
+   action_result checkwin(account_name checker) {
+       return push_action(_code, N(checkwin), checker, mvo());
+   }
+
    void create_accounts_with_resources( vector<account_name> accounts, account_name creator = config::system_account_name ) {
       for( auto a : accounts ) {
          create_account_with_resources( a, creator );
@@ -120,11 +132,19 @@ BOOST_FIXTURE_TEST_CASE( buyname, cyber_bios_tester ) try {
 
    BOOST_REQUIRE_EXCEPTION( create_accounts_with_resources( { N(fail) }, N(dan) ),
                             eosio_assert_message_exception, eosio_assert_message_is( "no active bid for name" ) );
+
+
+   const asset names_balance = token.get_account(config::names_account_name).get_object()["balance"].as<asset>();
+   const asset dan_balance = token.get_account(N(dan)).get_object()["balance"].as<asset>();
    BOOST_REQUIRE_EQUAL( success(), bidname( N(dan), N(nofail), token.from_amount(10000) ) );
+   BOOST_REQUIRE_EQUAL(dan_balance - token.from_amount(10000), token.get_account(N(dan)).get_object()["balance"].as<asset>());
+   BOOST_REQUIRE_EQUAL(names_balance + token.from_amount(10000), token.get_account(config::names_account_name).get_object()["balance"].as<asset>());
+
    BOOST_REQUIRE_EQUAL( "assertion failure with message: must increase bid by 10%", bidname( N(sam), N(nofail), token.from_amount(10000) )); // didn't increase bid by 10%
    BOOST_REQUIRE_EQUAL( success(), bidname( N(sam), N(nofail), token.from_amount(20000) )); // didn't increase bid by 10%
    produce_block();
    produce_block( fc::days(1) );
+   BOOST_REQUIRE_EQUAL( success(), checkwin(N(sam)));
 
    BOOST_REQUIRE_EXCEPTION( create_accounts_with_resources( { N(nofail) }, N(dan) ),
                             eosio_assert_message_exception, eosio_assert_message_is( "only highest bidder can claim" ) );
@@ -135,6 +155,62 @@ BOOST_FIXTURE_TEST_CASE( buyname, cyber_bios_tester ) try {
                             eosio_assert_message_exception, eosio_assert_message_is( "only suffix may create this account" ) );
 
    create_accounts( { N(goodgoodgood) }, N(dan) );
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE( bid_refunding, cyber_bios_tester ) try {
+   create_accounts({ N(alice), N(bob), N(carl) });
+
+   BOOST_CHECK_EQUAL(success(), token.open(N(alice), token._symbol, N(alice)));
+   BOOST_CHECK_EQUAL(success(), token.open(N(bob), token._symbol, N(bob)));
+   BOOST_CHECK_EQUAL(success(), token.open(N(carl), token._symbol, N(carl)));
+
+   BOOST_CHECK_EQUAL(success(), token.transfer(config::system_account_name, N(alice), token.from_amount(100000), ""));
+   BOOST_CHECK_EQUAL(success(), token.transfer(config::system_account_name, N(bob), token.from_amount(100000), ""));
+   BOOST_CHECK_EQUAL(success(), token.transfer(config::system_account_name, N(carl), token.from_amount(100000), ""));
+
+   const asset names_balance = token.get_account(config::names_account_name).get_object()["balance"].as<asset>();
+   const asset alice_balance = token.get_account(N(alice)).get_object()["balance"].as<asset>();
+
+   BOOST_TEST_MESSAGE("-- Checking cannot refund without outbidding");
+
+   BOOST_REQUIRE_EQUAL( success(), bidname(N(alice), N(nofail), token.from_amount(10000)) );
+   produce_block();
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg("Nothing to refund"), bidrefund(N(alice)) );
+
+   BOOST_TEST_MESSAGE("-- Checking normal refund");
+
+   BOOST_REQUIRE_EQUAL( success(), bidname(N(bob), N(nofail), token.from_amount(20000)) );
+   produce_block();
+   BOOST_REQUIRE_EQUAL( success(), bidrefund(N(alice)) );
+   produce_block();
+
+   BOOST_REQUIRE_EQUAL(names_balance + token.from_amount(20000), token.get_account(config::names_account_name).get_object()["balance"].as<asset>());
+   BOOST_REQUIRE_EQUAL(alice_balance, token.get_account(N(alice)).get_object()["balance"].as<asset>());
+
+   BOOST_TEST_MESSAGE("-- Checking cannot refund twice");
+
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg("Nothing to refund"), bidrefund(N(alice)) );
+
+   BOOST_TEST_MESSAGE("-- Checking another person can refund outbidded bid");
+   BOOST_TEST_MESSAGE("-- Checking can refund accumulated bid");
+
+   BOOST_REQUIRE_EQUAL( success(), bidname(N(carl), N(nofail), token.from_amount(30000)) );
+   produce_block();
+   BOOST_REQUIRE_EQUAL( success(), bidname(N(alice), N(nofail), token.from_amount(40000)) );
+   produce_block();
+   BOOST_REQUIRE_EQUAL( success(), bidname(N(carl), N(nofail), token.from_amount(50000)) );
+   produce_block();
+   BOOST_REQUIRE_EQUAL( success(), bidname(N(alice), N(nofail), token.from_amount(60000)) );
+   produce_block();
+   BOOST_REQUIRE_EQUAL( success(), bidrefund(N(alice), N(carl)) );
+   produce_block();
+
+   BOOST_TEST_MESSAGE("-- Checking refunding checks winner");
+
+   produce_block( fc::days(1) );
+   BOOST_REQUIRE_EQUAL( success(), bidrefund(N(carl)) );
+   produce_block();
+   create_accounts_with_resources({ N(nofail) }, N(alice));
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE( bid_invalid_names, cyber_bios_tester ) try {
@@ -226,12 +302,14 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
 
    produce_block();
    produce_block( fc::hours(20) );
+   BOOST_REQUIRE_EQUAL( success(), checkwin("david"));
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefd), N(david) ), fc::exception,  fc_assert_exception_message_is( "auction for name is not closed yet" ));
    BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(bob),  token.from_amount(100000000)));
 
    produce_blocks(10);
    produce_block( fc::hours(2) );
    produce_blocks(10);
+   BOOST_REQUIRE_EQUAL( success(), checkwin("david"));
 
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefd), N(david) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefa), N(bob) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
@@ -242,18 +320,21 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
 
    produce_block();
    produce_block( fc::days(2) );
+   BOOST_REQUIRE_EQUAL( success(), checkwin("david"));
 
    create_account_with_resources( N(prefd), N(david) );
    BOOST_REQUIRE_EQUAL( success(), bidname( N(eve), N(prefb), token.from_amount(21880) ) );
 
    produce_blocks(2);
    produce_block( fc::hours(22) );
+   BOOST_REQUIRE_EQUAL( success(), checkwin("eve"));
 
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(eve) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
-   BOOST_REQUIRE_EQUAL( success(), bidname( "carl", "prefe", token.from_amount(20980) ) );
 
    produce_blocks(2);
    produce_block( fc::hours(2) );
+   // bidname calls checkwin for eve
+   BOOST_REQUIRE_EQUAL( success(), bidname( "carl", "prefe", token.from_amount(20980) ) );
 
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(alice) ), eosio_assert_message_exception, eosio_assert_message_is( "only highest bidder can claim" ) );
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefb), N(carl) ), eosio_assert_message_exception, eosio_assert_message_is( "only highest bidder can claim" ) );
@@ -262,6 +343,7 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
 
    produce_block();
    produce_block( fc::hours(24) );
+   BOOST_REQUIRE_EQUAL( success(), checkwin("carl"));
 
    create_account_with_resources( N(prefe), N(carl) );
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(xyz.prefe), N(carl) ), fc::exception, fc_assert_exception_message_is("only suffix may create this account") );
@@ -297,6 +379,13 @@ BOOST_FIXTURE_TEST_CASE( namebid_pending_winner, cyber_bios_tester ) try {
    produce_block();
    produce_block( fc::hours(100) ); //should close "perfa"
    produce_block( fc::hours(100) ); //should close "perfb"
+   BOOST_REQUIRE_EQUAL( success(), checkwin("alice1111111"));
+   produce_block();
+   produce_block( fc::hours(24) );
+   BOOST_REQUIRE_EQUAL( success(), checkwin("bob111111111"));
+   produce_block();
+   produce_block( fc::hours(24) );
+   BOOST_REQUIRE_EQUAL( success(), checkwin("bob111111111")); // case with calling it again
 
    create_account_with_resources( N(prefb), N(bob111111111) );
 } FC_LOG_AND_RETHROW()

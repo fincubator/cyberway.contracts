@@ -43,7 +43,7 @@ void domain::checkwin() {
             highest->high_bid > 0 &&
             (now - highest->last_bid_time).to_seconds() > min_time_from_last_bid
         ) {
-            s.last_win = tnow;
+            s.last_win = now;
             state.set(s, _self);
             idx.modify(highest, same_payer, [&](auto& b) {
                 b.high_bid = -b.high_bid;

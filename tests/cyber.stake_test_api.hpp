@@ -2,6 +2,7 @@
 #include "test_api_helper.hpp"
 #include "../common/config.hpp"
 #include "../cyber.stake/include/cyber.stake/config.hpp"
+#include <eosio/chain/stake_object.hpp>
 
 using eosio::chain::symbol_code;
 
@@ -41,6 +42,11 @@ public:
         return push(N(enable), issuer, args()
             ("token_symbol", token_symbol)
         );
+    }
+    
+    void disable(symbol_code token_code) {
+        auto& db = _tester->control->chaindb();
+        db.modify(*db.find<stake_stat_object>(token_code.value), [&]( auto& s) { s.enabled = false; });
     }
     
     action_result delegate(account_name grantor_name, account_name agent_name, asset quantity) {
@@ -160,6 +166,9 @@ public:
         auto ret = setproxylvl(account, token_code, 0);
         if(ret != base_tester::success())
             return ret;
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << account <<  " sets key");
+        }
          return push(N(setkey), account, args()
             ("account", account)
             ("token_code", token_code)

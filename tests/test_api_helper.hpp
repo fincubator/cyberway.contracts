@@ -23,7 +23,7 @@ inline account_name user_name(size_t n) {
 }; 
 
 struct base_contract_api {
-private:
+protected:
     uint32_t billed_cpu_time_us = base_tester::DEFAULT_BILLED_CPU_TIME_US;
     uint64_t billed_ram_bytes = base_tester::DEFAULT_BILLED_RAM_BYTES;
 public:

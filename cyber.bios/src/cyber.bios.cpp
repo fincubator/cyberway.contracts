@@ -54,15 +54,30 @@ void bios::checkwin() {
     }
 }
 
+// TODO: can be added to CDT
+name get_prefix(name acc) {
+  auto tmp = acc.value;
+  auto remain_bits = 64;
+  for (; remain_bits >= -1; remain_bits-=5) {
+    if ((tmp >> 59) == 0) { // 1st symbol is dot
+      break;
+    }
+    tmp <<= 5;
+  }
+  if (remain_bits == -1) {
+    remain_bits = 0;
+  }
+  return name{acc.value >> remain_bits << remain_bits};
+}
+
 void bios::bidname( name bidder, name newname, eosio::asset bid ) {
    require_auth( bidder );
    checkwin();
 
-   eosio::check( newname.suffix() == newname, "you can only bid on top-level suffix" );
+   eosio::check( get_prefix(newname) == newname, "you can only bid on top-level prefix" );
 
    eosio::check( (bool)newname, "the empty name is not a valid account name to bid on" );
    eosio::check( (newname.value & 0xFull) == 0, "13 character names are not valid account names to bid on" );
-   eosio::check( (newname.value & 0x1F0ull) == 0, "accounts with 12 character names and no dots can be created without bidding required" );
    eosio::check( !is_account( newname ), "account already exists" );
    eosio::check( bid.symbol == core_symbol(), "asset must be system token" );
    eosio::check( bid.amount > 0, "insufficient bid" );
@@ -123,24 +138,15 @@ void bios::bidrefund( name bidder ) {
 
 void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore<authority> active) {
     if( creator != _self ) {
-        uint64_t tmp = newact.value >> 4;
-        bool has_dot = false;
-
-        for( uint32_t i = 0; i < 12; ++i ) {
-            has_dot |= !(tmp & 0x1f);
-            tmp >>= 5;
-        }
-        if( has_dot ) { // or is less than 12 characters
-            auto suffix = newact.suffix();
-            if( suffix == newact ) {
-                name_bid_table bids(_self, _self.value);
-                auto current = bids.require_find( newact.value, "no active bid for name" );
-                eosio::check( current->high_bidder == creator, "only highest bidder can claim" );
-                eosio::check( current->high_bid < 0, "auction for name is not closed yet" );
-                bids.erase( current );
-            } else {
-                eosio::check( creator == suffix, "only suffix may create this account" );
-            }
+        auto prefix = get_prefix(newact);
+        if (prefix == newact) {
+            name_bid_table bids(_self, _self.value);
+            auto current = bids.require_find( newact.value, "no active bid for name" );
+            eosio::check( current->high_bidder == creator, "only highest bidder can claim" );
+            eosio::check( current->high_bid < 0, "auction for name is not closed yet" );
+            bids.erase( current );
+        } else {
+            eosio::check( creator == prefix, "only prefix may create this account" );
         }
     }
 }

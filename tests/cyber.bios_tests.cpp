@@ -104,6 +104,8 @@ public:
 BOOST_AUTO_TEST_SUITE(cyber_bios_tests)
 
 BOOST_FIXTURE_TEST_CASE( buyname, cyber_bios_tester ) try {
+   BOOST_TEST_MESSAGE("Testing generic buying name");
+
    create_accounts({ N(dan), N(sam) });
 
    BOOST_CHECK_EQUAL(success(), token.open(N(dan), token._symbol, N(dan)));
@@ -150,14 +152,19 @@ BOOST_FIXTURE_TEST_CASE( buyname, cyber_bios_tester ) try {
                             eosio_assert_message_exception, eosio_assert_message_is( "only highest bidder can claim" ) );
    create_accounts_with_resources( { N(nofail) }, N(sam) );
    BOOST_REQUIRE_EQUAL( success(), token.transfer(config::system_account_name, N(nofail), token.from_amount(10000000)));
-   create_accounts_with_resources( { N(test.nofail) }, N(nofail) );
-   BOOST_REQUIRE_EXCEPTION( create_accounts_with_resources( { N(test.fail) }, N(dan) ),
-                            eosio_assert_message_exception, eosio_assert_message_is( "only suffix may create this account" ) );
 
-   create_accounts( { N(goodgoodgood) }, N(dan) );
+   BOOST_TEST_MESSAGE("Testing creating subname accounts");
+   create_accounts_with_resources( { N(nofail.sub) }, N(nofail) );
+   BOOST_REQUIRE_EXCEPTION( create_accounts_with_resources( { N(fail.test) }, N(dan) ),
+                            eosio_assert_message_exception, eosio_assert_message_is( "only prefix may create this account" ) );
+
+   create_accounts_with_resources( { N(nofail.s.s) }, N(nofail) );
+   //create_accounts_with_resources( { N(nofail.890123) }, N(nofail) );
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE( bid_refunding, cyber_bios_tester ) try {
+   BOOST_TEST_MESSAGE("Testing refunding bid");
+
    create_accounts({ N(alice), N(bob), N(carl) });
 
    BOOST_CHECK_EQUAL(success(), token.open(N(alice), token._symbol, N(alice)));
@@ -214,9 +221,11 @@ BOOST_FIXTURE_TEST_CASE( bid_refunding, cyber_bios_tester ) try {
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE( bid_invalid_names, cyber_bios_tester ) try {
+   BOOST_TEST_MESSAGE("Testing bidding invalid names");
+
    create_accounts( { N(dan) } );
 
-   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "you can only bid on top-level suffix" ),
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "you can only bid on top-level prefix" ),
                         bidname( N(dan), N(abcdefg.123456), token.from_amount(10000) ) );
 
    BOOST_REQUIRE_EQUAL( wasm_assert_msg( "the empty name is not a valid account name to bid on" ),
@@ -225,12 +234,11 @@ BOOST_FIXTURE_TEST_CASE( bid_invalid_names, cyber_bios_tester ) try {
    BOOST_REQUIRE_EQUAL( wasm_assert_msg( "13 character names are not valid account names to bid on" ),
                         bidname( N(dan), N(abcdefgh12345), token.from_amount(1) ) );
 
-   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "accounts with 12 character names and no dots can be created without bidding required" ),
-                        bidname( N(dan), N(abcdefg12345), token.from_amount(1) ) );
-
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
+   BOOST_TEST_MESSAGE("Testing interaction of multiple bids and multiple auctions");
+
    const std::string not_closed_message("auction for name is not closed yet");
 
    std::vector<account_name> accounts = { N(alice), N(bob), N(carl), N(david), N(eve) };
@@ -346,14 +354,16 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
    BOOST_REQUIRE_EQUAL( success(), checkwin("carl"));
 
    create_account_with_resources( N(prefe), N(carl) );
-   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(xyz.prefe), N(carl) ), fc::exception, fc_assert_exception_message_is("only suffix may create this account") );
+   BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefe.xyz), N(carl) ), fc::exception, fc_assert_exception_message_is("only prefix may create this account") );
    BOOST_CHECK_EQUAL(success(), token.transfer( config::system_account_name, N(prefe), token.from_amount(100000000) ));
-   create_account_with_resources( N(xyz.prefe), N(prefe) );
+   create_account_with_resources( N(prefe.xyz), N(prefe) );
 
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefa), N(bob) ), fc::exception, fc_assert_exception_message_is( not_closed_message ) );
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE( namebid_pending_winner, cyber_bios_tester ) try {
+    BOOST_TEST_MESSAGE("Testing creating account by pending winner");
+
     std::vector<account_name> accounts = { N(alice1111111), N(bob111111111) };
     create_accounts_with_resources( accounts );
     for ( const auto& a: accounts ) {

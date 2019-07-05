@@ -105,7 +105,7 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
 }
 
 void govern::propose_producers(structures::state_info& s) {
-
+    s.last_propose_block_num = s.block_num;
     if ((s.required_producers_num < max_producers_num) && (eosio::current_time_point() - s.last_schedule_increase).to_seconds() >= schedule_increase_min_delay) {
         auto votes_total = stake::get_votes_sum(system_token.code());
         auto votes_top   = stake::get_votes_sum(system_token.code(), s.required_producers_num - active_reserve_producers_num);
@@ -130,7 +130,6 @@ void govern::propose_producers(structures::state_info& s) {
         return;
     }
     s.last_producers_num = new_producers_num;
-    s.last_propose_block_num = s.block_num;
     std::vector<name> accounts;
     accounts.reserve(new_producers_num);
     for (const auto& t : new_producers) {

@@ -234,6 +234,12 @@ BOOST_FIXTURE_TEST_CASE( bid_invalid_names, cyber_bios_tester ) try {
    BOOST_REQUIRE_EQUAL( wasm_assert_msg( "13 character names are not valid account names to bid on" ),
                         bidname( N(dan), N(abcdefgh12345), token.from_amount(1) ) );
 
+   BOOST_REQUIRE_EQUAL( wasm_assert_msg( "accounts with 12 character names can be created without bidding required" ),
+                        bidname( N(dan), N(abcdefg12345), token.from_amount(1) ) );
+
+   BOOST_TEST_MESSAGE("Testing creating 12-character account without bidding");
+
+   create_accounts_with_resources({ N(abcdefg12345) }, N(dan));
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {

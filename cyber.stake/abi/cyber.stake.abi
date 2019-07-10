@@ -2,15 +2,25 @@
     "version": "cyberway::abi/1.1",
     "structs": [
         {
-            "name": "payout_struct",
+            "name": "provision_struct",
             "base": "",
             "fields": [
                 { "type": "uint64",         "name": "id" },
                 { "type": "symbol_code",    "name": "token_code"  },
-                { "type": "name",           "name": "account"  },
-                { "type": "int64",          "name": "balance"  },
-                { "type": "uint16",         "name": "steps_left"  },
-                { "type": "time_point_sec", "name": "last_step"  }
+                { "type": "name",           "name": "provider_name"  },
+                { "type": "name",           "name": "consumer_name"  },
+                { "type": "int64",          "name": "amount"  }
+            ]
+        },{
+            "name": "prov_payout_struct",
+            "base": "",
+            "fields": [
+                            { "type": "uint64",         "name": "id" },
+                { "type": "symbol_code",    "name": "token_code"  },
+                { "type": "name",           "name": "provider_name"  },
+                { "type": "name",           "name": "consumer_name"  },
+                { "type": "int64",          "name": "amount"  },
+                {"name":"date",             "type":"time_point_sec"}
             ]
         },{
             "name": "create_args",
@@ -18,8 +28,7 @@
             "fields": [
                 { "type": "symbol",                 "name": "token_symbol" },
                 { "type": "uint8[]",                "name": "max_proxies"  },
-                { "type": "int64",                  "name": "payout_step_length"  },
-                { "type": "uint16",                 "name": "payout_steps_num"  },
+                { "type": "int64",                  "name": "depriving_window"  },
                 { "type": "int64",                  "name": "min_own_staked_for_election"  }
             ]
         },{
@@ -128,6 +137,22 @@
                 { "type": "symbol_code",    "name": "token_code" },
                 { "type": "name[]",         "name": "accounts" } 
             ]
+        },{
+            "name": "provide_args",
+            "base": "",
+            "fields": [
+                { "type": "name",           "name": "provider_name" },
+                { "type": "name",           "name": "consumer_name"  },
+                { "type": "asset",          "name": "quantity"  }
+            ]
+        },{
+            "name": "claimprov_args",
+            "base": "",
+            "fields": [
+                { "type": "name",           "name": "provider_name" },
+                { "type": "name",           "name": "consumer_name"  },
+                { "type": "symbol_code",          "name": "token_code"  }
+            ]
         }
     ],
     "types": [],
@@ -161,14 +186,6 @@
             "type": "withdraw_args",
             "ricardian_contract": ""
         },{
-            "name": "cancelwd",
-            "type": "withdraw_args",
-            "ricardian_contract": ""
-        },{
-            "name": "claim",
-            "type": "claim_args",
-            "ricardian_contract": ""
-        },{
             "name": "setproxylvl",
             "type": "setproxylvl_args",
             "ricardian_contract": ""
@@ -196,16 +213,36 @@
             "name": "pick",
             "type": "pick_args",
             "ricardian_contract": ""
+        },{
+            "name": "provide",
+            "type": "provide_args",
+            "ricardian_contract": ""
+        },{
+            "name": "deprive",
+            "type": "provide_args",
+            "ricardian_contract": ""
+        },{
+            "name": "claimprov",
+            "type": "claimprov_args",
+            "ricardian_contract": ""
         }
     ],
     "tables": [
         {
-            "name": "payout",
-            "type": "payout_struct",
+            "name": "provision",
+            "type": "provision_struct",
             "indexes": [
                 { "name": "primary", "unique": "true", "orders": [ {"field": "id", "order": "asc"} ] },
-                { "name": "payoutacc", "unique": "false", "orders": [
-                    {"field": "token_code", "order": "asc"}, {"field": "account", "order": "asc"} ] }
+                { "name": "bykey", "unique": "true", "orders": [
+                    {"field": "token_code", "order": "asc"}, {"field": "provider_name", "order": "asc"}, {"field": "consumer_name", "order": "asc"} ] }
+            ]
+        },{
+            "name": "provpayout",
+            "type": "prov_payout_struct",
+            "indexes": [
+                { "name": "primary", "unique": "true", "orders": [ {"field": "id", "order": "asc"} ] },
+                { "name": "bykey", "unique": "true", "orders": [
+                    {"field": "token_code", "order": "asc"}, {"field": "provider_name", "order": "asc"}, {"field": "consumer_name", "order": "asc"} ] }
             ]
         }
     ],

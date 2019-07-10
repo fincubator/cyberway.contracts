@@ -46,7 +46,7 @@ public:
        BOOST_CHECK_EQUAL(success(), token.issue(config::system_account_name, config::system_account_name, token.from_amount(10000000000000), ""));
        BOOST_CHECK_EQUAL(success(), token.open(cfg::names_name, token._symbol, cfg::names_name));
        BOOST_CHECK_EQUAL(success(), stake.create(config::system_account_name, token._symbol,
-           std::vector<uint8_t>{30, 10, 3, 1}, 7 * 24 * 60 * 60, 52));
+           std::vector<uint8_t>{30, 10, 3, 1}, 30 * 24 * 60 * 60));
 
        BOOST_TEST_MESSAGE("--- installing governance contract");
        install_contract(govern_account_name, contracts::govern_wasm(), contracts::govern_abi());

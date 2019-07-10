@@ -324,7 +324,7 @@ def stepCreateTokens():
         sleep(1)
 def stepConfigureSystem():
     if not args.golos_genesis:
-       retry(args.cleos + 'push action cyber.stake create \'["4,%s", [30, 10, 3, 1], 1800, 43200, 12, 0]\' -p cyber' % (args.symbol))
+       retry(args.cleos + 'push action cyber.stake create \'["4,%s", [30, 10, 3, 1], 2592000, 0]\' -p cyber' % (args.symbol))
        retry(args.cleos + 'push action cyber.stake open \'{"owner":"cyber", "token_code":"%s"}\' -p cyber' % (args.symbol))
        retry(args.cleos + 'push action cyber.token issue \'{"to":"cyber", "quantity":"500.0000 %s", "memo":""}\' -p cyber' % (args.symbol))
        retry(args.cleos + 'push action cyber.token transfer \'{"from":"cyber", "to":"cyber.stake", "quantity":"500.0000 %s", "memo":""}\' -p cyber' % (args.symbol))

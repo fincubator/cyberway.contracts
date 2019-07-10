@@ -20,14 +20,13 @@ public:
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol,
-            std::vector<uint8_t> max_proxies, int64_t payout_step_length, uint16_t payout_steps_num,
+            std::vector<uint8_t> max_proxies, int64_t depriving_window,
             int64_t min_own_staked_for_election = 0) {
         
         return push(N(create), issuer, args()
             ("token_symbol", token_symbol)
             ("max_proxies", max_proxies)
-            ("payout_step_length", payout_step_length)
-            ("payout_steps_num", payout_steps_num)
+            ("depriving_window", depriving_window)
             ("min_own_staked_for_election", min_own_staked_for_election)
         );
     }
@@ -98,26 +97,6 @@ public:
         );
     }
     
-    action_result cancelwd(account_name account, asset quantity) {
-        if (verbose) {
-            BOOST_TEST_MESSAGE("--- " << account <<  " cancels withdraw " << quantity);
-        }
-        return push(N(cancelwd), account, args()
-            ("account", account)
-            ("quantity", quantity)
-        );
-    }
-    
-    action_result claim(account_name account, symbol_code token_code) {
-        if (verbose) {
-            BOOST_TEST_MESSAGE("--- " << account <<  " claims " << symbol(token_code << 8).name());
-        }
-        return push(N(claim), account, args()
-            ("account", account)
-            ("token_code", token_code)
-        );
-    }
-    
     action_result setproxylvl(account_name account, symbol_code token_code, uint8_t level, bool mssg = true) {
         if (mssg && verbose) {
             BOOST_TEST_MESSAGE("--- " << account <<  " sets proxy level");
@@ -157,6 +136,36 @@ public:
         );
     }
     
+    action_result provide(account_name provider_name, account_name consumer_name, asset quantity) {
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << provider_name <<  " provides " << quantity << " to " << consumer_name);
+        }
+        return push(N(provide), provider_name, args()
+            ("provider_name", provider_name)
+            ("consumer_name", consumer_name)
+            ("quantity", quantity)
+        );
+    }
+    
+    action_result deprive(account_name provider_name, account_name consumer_name, asset quantity) {
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << provider_name <<  " deprives " << consumer_name << " of " << quantity);
+        }
+        return push(N(deprive), provider_name, args()
+            ("provider_name", provider_name)
+            ("consumer_name", consumer_name)
+            ("quantity", quantity)
+        );
+    }
+    
+    action_result claimprov(name provider_name, name consumer_name, symbol_code token_code) {
+        return push(N(claimprov), provider_name, args()
+            ("provider_name", provider_name)
+            ("consumer_name", consumer_name)
+            ("token_code", token_code)
+        );
+    }
+
     action_result register_candidate(account_name account, symbol_code token_code, bool need_to_open = true) {
         if (need_to_open) {
             auto ret = open(account, token_code);
@@ -202,7 +211,9 @@ public:
             int64_t shares_sum = 0,
             int64_t own_share = 0,
             int16_t fee = 0,
-            int64_t min_own_staked = 0
+            int64_t min_own_staked = 0,
+            int64_t provided = 0,
+            int64_t received = 0
         ) {
         return mvo()
             ("token_code", token_symbol.to_symbol_code())
@@ -214,7 +225,9 @@ public:
             ("shares_sum", shares_sum)
             ("own_share", own_share)
             ("fee", fee)
-            ("min_own_staked", min_own_staked);
+            ("min_own_staked", min_own_staked)
+            ("provided", provided)
+            ("received", received);
     }
     
     int64_t get_total_votes(symbol_code token_code) {

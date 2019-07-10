@@ -15,6 +15,7 @@ namespace cyber {
    using eosio::name;
    using eosio::time_point_sec;
    using eosio::contract;
+   using eosio::asset;
 
    struct permission_level_weight {
       permission_level  permission;
@@ -88,6 +89,7 @@ namespace cyber {
                                   eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<name_bid, uint64_t, &name_bid::by_high_bid>  >
                                 > name_bid_table;
 
+         void check_stake(name account);
       public:
          using contract::contract;
          [[eosio::action]]
@@ -157,6 +159,9 @@ namespace cyber {
          void bidrefund( name bidder );
 
          [[eosio::action]] void onblock(ignore<block_header> header);
+         
+         void on_stake_withdraw(name account, asset quantity);
+         void on_stake_provide(name provider_name, name consumer_name, asset quantity);
 
    };
 

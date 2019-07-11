@@ -126,8 +126,8 @@ BOOST_FIXTURE_TEST_CASE( buyname, cyber_bios_tester ) try {
    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(N(dan), token._symbol.to_symbol_code(), 0));
    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(N(sam), token._symbol.to_symbol_code(), 0));
 
-   BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(dan), token.from_amount(10000000)));
-   BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(sam), token.from_amount(10000000)));
+   BOOST_CHECK_EQUAL(success(), stake.delegatevote(config::system_account_name, N(dan), token.from_amount(10000000)));
+   BOOST_CHECK_EQUAL(success(), stake.delegatevote(config::system_account_name, N(sam), token.from_amount(10000000)));
 
    produce_block();
    produce_block(fc::days(14));
@@ -276,8 +276,8 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
    BOOST_CHECK_EQUAL(success(), token.transfer(config::system_account_name, config::stake_account_name, token.from_amount(300000000)));
    BOOST_CHECK_EQUAL(success(), token.transfer(N(bob),  config::stake_account_name, token.from_amount(10000)));
    BOOST_CHECK_EQUAL(success(), token.transfer(N(carl), config::stake_account_name, token.from_amount(10000)));
-   BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(bob),  token.from_amount(10000000)));
-   BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(carl), token.from_amount(10000000)));
+   BOOST_CHECK_EQUAL(success(), stake.delegatevote(config::system_account_name, N(bob),  token.from_amount(10000000)));
+   BOOST_CHECK_EQUAL(success(), stake.delegatevote(config::system_account_name, N(carl), token.from_amount(10000000)));
 
    // start bids
    BOOST_CHECK_EQUAL(success(), bidname( N(bob), N(prefa), token.from_amount( 10003 )));
@@ -324,7 +324,7 @@ BOOST_FIXTURE_TEST_CASE( multiple_namebids, cyber_bios_tester ) try {
    produce_block( fc::hours(20) );
    BOOST_REQUIRE_EQUAL( success(), checkwin("david"));
    BOOST_REQUIRE_EXCEPTION( create_account_with_resources( N(prefd), N(david) ), fc::exception,  fc_assert_exception_message_is( "auction for name is not closed yet" ));
-   BOOST_CHECK_EQUAL(success(), stake.delegate(config::system_account_name, N(bob),  token.from_amount(100000000)));
+   BOOST_CHECK_EQUAL(success(), stake.delegatevote(config::system_account_name, N(bob),  token.from_amount(100000000)));
 
    produce_blocks(10);
    produce_block( fc::hours(2) );

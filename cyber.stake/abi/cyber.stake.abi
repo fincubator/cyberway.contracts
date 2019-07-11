@@ -7,18 +7,18 @@
             "fields": [
                 { "type": "uint64",         "name": "id" },
                 { "type": "symbol_code",    "name": "token_code"  },
-                { "type": "name",           "name": "provider_name"  },
-                { "type": "name",           "name": "consumer_name"  },
+                { "type": "name",           "name": "grantor_name"  },
+                { "type": "name",           "name": "recipient_name"  },
                 { "type": "int64",          "name": "amount"  }
             ]
         },{
             "name": "prov_payout_struct",
             "base": "",
             "fields": [
-                            { "type": "uint64",         "name": "id" },
+                { "type": "uint64",         "name": "id" },
                 { "type": "symbol_code",    "name": "token_code"  },
-                { "type": "name",           "name": "provider_name"  },
-                { "type": "name",           "name": "consumer_name"  },
+                { "type": "name",           "name": "grantor_name"  },
+                { "type": "name",           "name": "recipient_name"  },
                 { "type": "int64",          "name": "amount"  },
                 {"name":"date",             "type":"time_point_sec"}
             ]
@@ -50,21 +50,21 @@
             "base": "",
             "fields": [
                 { "type": "name",           "name": "grantor_name" },
-                { "type": "name",           "name": "agent_name"  },
+                { "type": "name",           "name": "recipient_name"  },
                 { "type": "asset",          "name": "quantity"  }
             ]
         },{
-            "name": "recall_args",
+            "name": "recallvote_args",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "grantor_name" },
-                { "type": "name",           "name": "agent_name"  },
+                { "type": "name",           "name": "recipient_name"  },
                 { "type": "symbol_code",    "name": "token_code"  },
                 { "type": "int16",          "name": "pct"  }
             ]
         },{
             "name": "setterms_args",
-            "base": "recall_args",
+            "base": "recallvote_args",
             "fields": [
                 { "type": "int16",          "name": "break_fee"  },
                 { "type": "int64",          "name": "break_min_own_staked"  }
@@ -77,7 +77,7 @@
                 { "type": "asset",          "name": "quantity"  }
             ]
         },{
-            "name": "claim_args",
+            "name": "acc_code_args",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "account" },
@@ -85,19 +85,19 @@
             ]
         },{
             "name": "setproxylvl_args",
-            "base": "claim_args",
+            "base": "acc_code_args",
             "fields": [
                 { "type": "uint8",          "name": "level"  }
             ]
         },{
             "name": "setproxyfee_args",
-            "base": "claim_args",
+            "base": "acc_code_args",
             "fields": [
                 { "type": "int16",          "name": "fee"  }
             ]
         },{
             "name": "setminstaked_args",
-            "base": "claim_args",
+            "base": "acc_code_args",
             "fields": [
                 { "type": "int64",          "name": "min_own_staked"  }
             ]
@@ -138,19 +138,11 @@
                 { "type": "name[]",         "name": "accounts" } 
             ]
         },{
-            "name": "provide_args",
+            "name": "claim_args",
             "base": "",
             "fields": [
-                { "type": "name",           "name": "provider_name" },
-                { "type": "name",           "name": "consumer_name"  },
-                { "type": "asset",          "name": "quantity"  }
-            ]
-        },{
-            "name": "claimprov_args",
-            "base": "",
-            "fields": [
-                { "type": "name",           "name": "provider_name" },
-                { "type": "name",           "name": "consumer_name"  },
+                { "type": "name",           "name": "grantor_name" },
+                { "type": "name",           "name": "recipient_name"  },
                 { "type": "symbol_code",          "name": "token_code"  }
             ]
         }
@@ -170,7 +162,7 @@
             "type": "enable_args",
             "ricardian_contract": ""
         },{
-            "name": "delegate",
+            "name": "delegatevote",
             "type": "delegate_args",
             "ricardian_contract": ""
         },{
@@ -178,8 +170,8 @@
             "type": "setterms_args",
             "ricardian_contract": ""
         },{
-            "name": "recall",
-            "type": "recall_args",
+            "name": "recallvote",
+            "type": "recallvote_args",
             "ricardian_contract": ""
         },{
             "name": "withdraw",
@@ -214,16 +206,16 @@
             "type": "pick_args",
             "ricardian_contract": ""
         },{
-            "name": "provide",
-            "type": "provide_args",
+            "name": "delegateuse",
+            "type": "delegate_args",
             "ricardian_contract": ""
         },{
-            "name": "deprive",
-            "type": "provide_args",
+            "name": "recalluse",
+            "type": "delegate_args",
             "ricardian_contract": ""
         },{
-            "name": "claimprov",
-            "type": "claimprov_args",
+            "name": "claim",
+            "type": "claim_args",
             "ricardian_contract": ""
         }
     ],
@@ -234,7 +226,7 @@
             "indexes": [
                 { "name": "primary", "unique": "true", "orders": [ {"field": "id", "order": "asc"} ] },
                 { "name": "bykey", "unique": "true", "orders": [
-                    {"field": "token_code", "order": "asc"}, {"field": "provider_name", "order": "asc"}, {"field": "consumer_name", "order": "asc"} ] }
+                    {"field": "token_code", "order": "asc"}, {"field": "grantor_name", "order": "asc"}, {"field": "recipient_name", "order": "asc"} ] }
             ]
         },{
             "name": "provpayout",
@@ -242,7 +234,7 @@
             "indexes": [
                 { "name": "primary", "unique": "true", "orders": [ {"field": "id", "order": "asc"} ] },
                 { "name": "bykey", "unique": "true", "orders": [
-                    {"field": "token_code", "order": "asc"}, {"field": "provider_name", "order": "asc"}, {"field": "consumer_name", "order": "asc"} ] }
+                    {"field": "token_code", "order": "asc"}, {"field": "grantor_name", "order": "asc"}, {"field": "recipient_name", "order": "asc"} ] }
             ]
         }
     ],

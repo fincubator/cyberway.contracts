@@ -81,7 +81,7 @@ int64_t stake::delegate_traversal(symbol_code token_code, stake::agents_idx_t& a
         auto to_delegate = safe_pct(amount, grant_itr->pct);
         remaining_amount -= to_delegate;
         eosio::check(remaining_amount >= 0, "SYSTEM: incorrect remaining_amount");
-        auto delegated = delegate_traversal(token_code, agents_idx, grants_idx, grant_itr->agent_name, to_delegate, votes_changes, true);
+        auto delegated = delegate_traversal(token_code, agents_idx, grants_idx, grant_itr->recipient_name, to_delegate, votes_changes, true);
         grants_idx.modify(grant_itr, name(), [&](auto& g) { g.share += delegated; });
         ++grant_itr;
     }
@@ -117,7 +117,7 @@ void stake::add_proxy(symbol_code token_code, grants& grants_table, const struct
         .id = grants_table.available_primary_key(),
         .token_code = token_code,
         .grantor_name = grantor_as_agent.account,
-        .agent_name = agent.account,
+        .recipient_name = agent.account,
         .pct = pct,
         .share = share,
         .break_fee = break_fee < 0 ? agent.fee : break_fee,
@@ -125,31 +125,31 @@ void stake::add_proxy(symbol_code token_code, grants& grants_table, const struct
     };});
 }
  
-void stake::delegate(name grantor_name, name agent_name, asset quantity) {
+void stake::delegatevote(name grantor_name, name recipient_name, asset quantity) {
     require_auth(grantor_name);
     eosio::check(quantity.amount > 0, "quantity must be positive");
     params params_table(table_owner, table_owner.value);
      auto token_code = quantity.symbol.code();
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
     
-    update_stake_proxied(token_code, agent_name);
+    update_stake_proxied(token_code, recipient_name);
      
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     
     auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);
     eosio::check(quantity.amount <= grantor_as_agent->balance, "insufficient funds");
-    auto agent = get_agent_itr(token_code, agents_idx, agent_name);
+    auto agent = get_agent_itr(token_code, agents_idx, recipient_name);
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
     std::map<name, int64_t> votes_changes;
-    auto delegated = delegate_traversal(token_code, agents_idx, grants_idx, agent_name, quantity.amount, votes_changes);
+    auto delegated = delegate_traversal(token_code, agents_idx, grants_idx, recipient_name, quantity.amount, votes_changes);
     set_votes(token_code, votes_changes);
     uint8_t proxies_num = 0;
     auto grant_itr = grants_idx.lower_bound(std::make_tuple(token_code, grantor_name, name()));
     while ((grant_itr != grants_idx.end()) && (grant_itr->token_code   == token_code) && (grant_itr->grantor_name == grantor_name)) {
         ++proxies_num;
-        if (grant_itr->agent_name == agent_name) {
+        if (grant_itr->recipient_name == recipient_name) {
             grants_idx.modify(grant_itr, name(), [&](auto& g) { g.share += delegated; });
             delegated = 0;
         }
@@ -167,9 +167,9 @@ void stake::delegate(name grantor_name, name agent_name, asset quantity) {
     });
 }
 
-void stake::recall(name grantor_name, name agent_name, symbol_code token_code, int16_t pct) {
+void stake::recallvote(name grantor_name, name recipient_name, symbol_code token_code, int16_t pct) {
     require_auth(grantor_name);
-    eosio::recall_stake_proxied(token_code, grantor_name, agent_name, pct);
+    eosio::recall_stake_proxied(token_code, grantor_name, recipient_name, pct);
 }
 
 void stake::check_grant_terms(const structures::agent& agent, int16_t break_fee, int64_t break_min_own_staked) {
@@ -177,7 +177,7 @@ void stake::check_grant_terms(const structures::agent& agent, int16_t break_fee,
     eosio::check(break_min_own_staked <= agent.min_own_staked, "break_min_own_staked can't be greater than current min_own_staked value");
 }
 
-void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_code, int16_t pct, int16_t break_fee, int64_t break_min_own_staked) {
+void stake::setgrntterms(name grantor_name, name recipient_name, symbol_code token_code, int16_t pct, int16_t break_fee, int64_t break_min_own_staked) {
     eosio::check(0 <= pct && pct <= config::_100percent, "pct must be between 0% and 100% (0-10000)");
     eosio::check(0 <= break_fee && break_fee <= config::_100percent, "break_fee must be between 0% and 100% (0-10000)");
     eosio::check(0 <= break_min_own_staked, "break_min_own_staked can't be negative");
@@ -198,8 +198,8 @@ void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_c
     auto grant_itr = grants_idx.lower_bound(std::make_tuple(token_code, grantor_name, name()));
     while ((grant_itr != grants_idx.end()) && (grant_itr->token_code == token_code) && (grant_itr->grantor_name == grantor_name)) {
          ++proxies_num;
-        if (grant_itr->agent_name == agent_name) {
-            check_grant_terms(*get_agent_itr(token_code, agents_idx, agent_name), break_fee, break_min_own_staked);
+        if (grant_itr->recipient_name == recipient_name) {
+            check_grant_terms(*get_agent_itr(token_code, agents_idx, recipient_name), break_fee, break_min_own_staked);
             changed = changed
                 || grant_itr->pct != pct
                 || grant_itr->break_fee != break_fee
@@ -226,8 +226,8 @@ void stake::setgrntterms(name grantor_name, name agent_name, symbol_code token_c
     if (!agent_found && pct) {
         auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);
         eosio::check(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
-        update_stake_proxied(token_code, agent_name);
-        auto agent = get_agent_itr(token_code, agents_idx, agent_name);
+        update_stake_proxied(token_code, recipient_name);
+        auto agent = get_agent_itr(token_code, agents_idx, recipient_name);
         check_grant_terms(*agent, break_fee, break_min_own_staked);
         
         add_proxy(token_code, grants_table, *grantor_as_agent, *agent, pct, 0, break_fee, break_min_own_staked);
@@ -533,21 +533,21 @@ void stake::pick(symbol_code token_code, std::vector<name> accounts) {
     }
 }
 
-void stake::update_provided(name provider_name, name consumer_name, asset quantity) {
+void stake::update_provided(name grantor_name, name recipient_name, asset quantity) {
     
-    require_auth(provider_name);
-    eosio::check(provider_name != consumer_name, "can't provide to yourself");
+    require_auth(grantor_name);
+    eosio::check(grantor_name != recipient_name, "can't delegate to yourself");
     auto token_code = quantity.symbol.code();
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
-    update_stake_proxied(token_code, provider_name);
+    update_stake_proxied(token_code, grantor_name);
     
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
-    auto provider = get_agent_itr(token_code, agents_idx, provider_name);
-    auto consumer = get_agent_itr(token_code, agents_idx, consumer_name);
+    auto grantor = get_agent_itr(token_code, agents_idx, grantor_name);
+    auto recipient = get_agent_itr(token_code, agents_idx, recipient_name);
     
-    auto prov_key = std::make_tuple(token_code, provider_name, consumer_name);
+    auto prov_key = std::make_tuple(token_code, grantor_name, recipient_name);
     
     provs provs_table(_self, _self.value);
     auto provs_index = provs_table.get_index<"bykey"_n>();
@@ -556,7 +556,6 @@ void stake::update_provided(name provider_name, name consumer_name, asset quanti
     prov_payouts payouts_table(_self, _self.value);
     auto payouts_index = payouts_table.get_index<"bykey"_n>();
     auto payout_itr = payouts_index.find(prov_key);
-    
     
     if (quantity.amount > 0) {
         int64_t to_provide = quantity.amount;
@@ -572,31 +571,31 @@ void stake::update_provided(name provider_name, name consumer_name, asset quanti
             }
         }
         
-        int64_t available = provider->get_own_funds() - provider->provided;
-        eosio::check(available > 0, "no staked tokens available");
+        int64_t available = grantor->get_own_funds() - grantor->provided;
+        eosio::check(available > 0, "SYSTEM: incorrect available");
         eosio::check(to_provide <= available, "not enough staked tokens");
         
         if (prov_itr != provs_index.end()) {
             provs_index.modify(prov_itr, name(), [&](auto& p) { p.amount += quantity.amount; });
         }
         else {
-            provs_table.emplace(provider_name, [&]( auto &item ) { item = structures::provision {
+            provs_table.emplace(grantor_name, [&]( auto &item ) { item = structures::provision {
                 .id = provs_table.available_primary_key(),
                 .token_code = token_code,
-                .provider_name = provider_name,
-                .consumer_name = consumer_name,
+                .grantor_name = grantor_name,
+                .recipient_name = recipient_name,
                 .amount = quantity.amount
             };});
         }
         
-        agents_idx.modify(provider, name(), [&](auto& a) { a.provided += to_provide; });
-        agents_idx.modify(consumer, name(), [&](auto& a) { a.received += quantity.amount; });
+        agents_idx.modify(grantor, name(), [&](auto& a) { a.provided += to_provide; });
+        agents_idx.modify(recipient, name(), [&](auto& a) { a.received += quantity.amount; });
         require_recipient(eosio::token::get_issuer(config::token_name, quantity.symbol.code()));
     }
     else {
         auto to_deprive = -quantity.amount;
-        eosio::check(prov_itr != provs_index.end(), "no tokens provided");
-        eosio::check(prov_itr->amount >= to_deprive, "not enough provided tokens");
+        eosio::check(prov_itr != provs_index.end(), "no tokens delegated");
+        eosio::check(prov_itr->amount >= to_deprive, "not enough delegated tokens");
         
         if (payout_itr != payouts_index.end()) {
             payouts_index.modify(payout_itr, name(), [&](auto& p) {
@@ -605,11 +604,11 @@ void stake::update_provided(name provider_name, name consumer_name, asset quanti
             });
         }
         else {
-            payouts_table.emplace(provider_name, [&]( auto &item ) { item = structures::prov_payout {
+            payouts_table.emplace(grantor_name, [&]( auto &item ) { item = structures::prov_payout {
                 .id = provs_table.available_primary_key(),
                 .token_code = token_code,
-                .provider_name = provider_name,
-                .consumer_name = consumer_name,
+                .grantor_name = grantor_name,
+                .recipient_name = recipient_name,
                 .amount = to_deprive,
                 .date = eosio::current_time_point() + eosio::seconds(param.depriving_window)
             };});
@@ -622,39 +621,39 @@ void stake::update_provided(name provider_name, name consumer_name, asset quanti
             provs_index.erase(prov_itr);
         }
         
-        agents_idx.modify(consumer, name(), [&](auto& a) { a.received -= to_deprive; });
+        agents_idx.modify(recipient, name(), [&](auto& a) { a.received -= to_deprive; });
     }
-    eosio::check(provider->provided >= 0, "SYSTEM: incorrect provided");
-    eosio::check(consumer->received >= 0, "SYSTEM: incorrect received");
+    eosio::check(grantor->provided >= 0, "SYSTEM: incorrect provided");
+    eosio::check(recipient->received >= 0, "SYSTEM: incorrect received");
 }
 
-void stake::provide(name provider_name, name consumer_name, asset quantity) {
-    eosio::check(quantity.amount > 0, "must provide positive quantity");
-    update_provided(provider_name, consumer_name, quantity);
+void stake::delegateuse(name grantor_name, name recipient_name, asset quantity) {
+    eosio::check(quantity.amount > 0, "must delegate positive quantity");
+    update_provided(grantor_name, recipient_name, quantity);
 }
 
-void stake::deprive(name provider_name, name consumer_name, asset quantity) {
-    eosio::check(quantity.amount > 0, "must deprive positive quantity");
+void stake::recalluse(name grantor_name, name recipient_name, asset quantity) {
+    eosio::check(quantity.amount > 0, "must recall positive quantity");
     quantity.amount = -quantity.amount;
-    update_provided(provider_name, consumer_name, quantity);
+    update_provided(grantor_name, recipient_name, quantity);
 }
 
-void stake::claimprov(name provider_name, name consumer_name, symbol_code token_code) {
+void stake::claim(name grantor_name, name recipient_name, symbol_code token_code) {
     
-    require_auth(provider_name);
+    require_auth(grantor_name);
     
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
-    auto provider = get_agent_itr(token_code, agents_idx, provider_name);
+    auto grantor = get_agent_itr(token_code, agents_idx, grantor_name);
     
     prov_payouts payouts_table(_self, _self.value);
     auto payouts_index = payouts_table.get_index<"bykey"_n>();
-    auto payout_itr = payouts_index.find(std::make_tuple(token_code, provider_name, consumer_name));
+    auto payout_itr = payouts_index.find(std::make_tuple(token_code, grantor_name, recipient_name));
     
     eosio::check(payout_itr != payouts_index.end() && payout_itr->date <= eosio::current_time_point(), "nothing to claim");
-    eosio::check(payout_itr->amount <= provider->provided, "SYSTEM: incorrect provided");
+    eosio::check(payout_itr->amount <= grantor->provided, "SYSTEM: incorrect provided");
     
-    agents_idx.modify(provider, name(), [&](auto& a) { a.provided -= payout_itr->amount; });
+    agents_idx.modify(grantor, name(), [&](auto& a) { a.provided -= payout_itr->amount; });
     payouts_index.erase(payout_itr);
     
 }
@@ -662,8 +661,8 @@ void stake::claimprov(name provider_name, name consumer_name, symbol_code token_
 } /// namespace cyber
 
 DISPATCH_WITH_TRANSFER(cyber::stake, cyber::config::token_name, on_transfer,
-    (create)(enable)(open)(delegate)(setgrntterms)(recall)(withdraw)
+    (create)(enable)(open)(delegatevote)(setgrntterms)(recallvote)(withdraw)
     (setproxylvl)(setproxyfee)(setminstaked)(setkey)
     (updatefunds)(reward)(pick)
-    (provide)(deprive)(claimprov)
+    (delegateuse)(recalluse)(claim)
 )

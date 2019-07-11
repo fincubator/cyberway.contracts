@@ -122,6 +122,12 @@ public:
         const string no_funds() {
             return amsg(std::string("insufficient funds"));
         }
+        const string not_enough_staked() {
+            return amsg(std::string("not enough staked tokens"));
+        }
+        const string not_enough_delegated() {
+            return amsg(std::string("not enough delegated tokens"));
+        }
         const string no_funds_due_to_usage() {
             return amsg(std::string("no staked tokens available due to resource usage"));
         }
@@ -326,7 +332,7 @@ BOOST_FIXTURE_TEST_CASE(increase_proxy_level_test, cyber_stake_tester) try {
         stake.make_agent(_alice, token._symbol, 4, t, balance_a, 0, balance_a, staked.get_amount()));
     
     BOOST_TEST_MESSAGE("--- alice delegates");
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_alice, _carol, asset(staked.get_amount() * pct_a, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_alice, _carol, asset(staked.get_amount() * pct_a, token._symbol)));
     produce_block();
     t = head_block_time();
     balance_a = (1.0 - pct_a) * staked.get_amount();
@@ -345,7 +351,7 @@ BOOST_FIXTURE_TEST_CASE(increase_proxy_level_test, cyber_stake_tester) try {
     auto proxied_b = 0;
     BOOST_CHECK_EQUAL(stake.get_agent(_bob, token._symbol),
         stake.make_agent(_bob, token._symbol, 1, t, balance_b, proxied_b, balance_b, 0));
-    BOOST_CHECK_EQUAL(success(), stake.recall(_alice, _carol, token._symbol.to_symbol_code(), cfg::_100percent));
+    BOOST_CHECK_EQUAL(success(), stake.recallvote(_alice, _carol, token._symbol.to_symbol_code(), cfg::_100percent));
     produce_block();
 
 } FC_LOG_AND_RETHROW()
@@ -360,7 +366,7 @@ BOOST_FIXTURE_TEST_CASE(open_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.open(_carol, token._symbol.to_symbol_code())));
-    BOOST_CHECK_EQUAL(err.no_agent(), stake.delegate(_alice, _carol, stake_u));
+    BOOST_CHECK_EQUAL(err.no_agent(), stake.delegatevote(_alice, _carol, stake_u));
     BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
     produce_block();
     BOOST_CHECK_EQUAL(err.agent_exists(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
@@ -404,7 +410,7 @@ BOOST_FIXTURE_TEST_CASE(basic_tests, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice,   stake_u, ""));
     BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, stake_u, "carol"));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_alice, _carol, stake_u));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_alice, _carol, stake_u));
     auto blocks_num = (frame_length * 1000) / cfg::block_interval_ms;
     produce_blocks(blocks_num);
     
@@ -645,14 +651,14 @@ BOOST_FIXTURE_TEST_CASE(proxy_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob,   token._symbol.to_symbol_code(), 3));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, token.from_amount(stake_amount / 2)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _bob, token.from_amount(stake_amount / 2)));
     BOOST_CHECK_EQUAL(err.no_funds(), stake.withdraw(_carol, token.from_amount(stake_amount / 2 + 1)));
     BOOST_CHECK_EQUAL(success(), stake.withdraw(_carol, token.from_amount(stake_amount / 2)));
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, token.from_amount(stake_amount / 2)));
     produce_block();
     
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, token.from_amount(stake_amount / 2)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_bob, _alice, token.from_amount(stake_amount - 1)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _bob, token.from_amount(stake_amount / 2)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob, _alice, token.from_amount(stake_amount - 1)));
     BOOST_CHECK_EQUAL(err.no_funds(), stake.withdraw(_bob, token.from_amount(stake_amount + 2)));
     BOOST_CHECK_EQUAL(err.no_agent_funds(), stake.withdraw(_bob, token.from_amount(stake_amount + 1)));
     BOOST_CHECK_EQUAL(success(), stake.withdraw(_bob, token.from_amount(stake_amount / 2)));
@@ -661,8 +667,8 @@ BOOST_FIXTURE_TEST_CASE(proxy_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"],   stake_amount - 1);
     BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["own_share"], stake_amount / 2);
     
-    BOOST_CHECK_EQUAL(success(), stake.recall(_carol, _bob,   token._symbol.to_symbol_code(), cfg::_100percent));
-    BOOST_CHECK_EQUAL(success(), stake.recall(_bob,   _alice, token._symbol.to_symbol_code(), cfg::_100percent));
+    BOOST_CHECK_EQUAL(success(), stake.recallvote(_carol, _bob,   token._symbol.to_symbol_code(), cfg::_100percent));
+    BOOST_CHECK_EQUAL(success(), stake.recallvote(_bob,   _alice, token._symbol.to_symbol_code(), cfg::_100percent));
     produce_block();
     
     BOOST_CHECK_EQUAL(success(), token.transfer(_bob, _code, token.from_amount(stake_amount / 2)));
@@ -677,7 +683,7 @@ BOOST_AUTO_TEST_SUITE_END() // unstaking
 
 BOOST_AUTO_TEST_SUITE(providing)
 BOOST_FIXTURE_TEST_CASE(basic_test, cyber_stake_tester) try {
-    BOOST_TEST_MESSAGE("unstaking/general_test");
+    BOOST_TEST_MESSAGE("providing/basic_test");
     install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
     BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(500));
     stake.set_billed(1500, 1024);
@@ -697,12 +703,12 @@ BOOST_FIXTURE_TEST_CASE(basic_test, cyber_stake_tester) try {
     int64_t prov_step_0 = 50;
     BOOST_TEST_MESSAGE("alice's resource balance = " << res_balance);
     BOOST_CHECK_EQUAL(res_balance, 0);
-    BOOST_CHECK_EQUAL(success(), stake.provide(_whale, _alice, token.from_amount(prov_step_0)));
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(prov_step_0)));
     res_balance = bios.get_account_balance(_alice);
     BOOST_TEST_MESSAGE("alice's resource balance = " << res_balance);
     BOOST_CHECK_GT(prov_step_0, res_balance);
     int64_t prov_step_1 = 30;
-    BOOST_CHECK_EQUAL(success(), stake.provide(_whale, _alice, token.from_amount(prov_step_1)));
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(prov_step_1)));
     auto new_res_balance = bios.get_account_balance(_alice);
     BOOST_CHECK_EQUAL(new_res_balance - res_balance, prov_step_1);
     res_balance = new_res_balance;
@@ -717,22 +723,167 @@ BOOST_FIXTURE_TEST_CASE(basic_test, cyber_stake_tester) try {
     produce_block();
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], prov_step_0 + prov_step_1);
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], prov_step_0 + prov_step_1);
-    BOOST_CHECK_EQUAL(success(), stake.deprive(_whale, _alice, token.from_amount(prov_step_0)));
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(prov_step_0)));
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], prov_step_0 + prov_step_1);
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], prov_step_1);
-    BOOST_CHECK_EQUAL(success(), stake.deprive(_whale, _alice, token.from_amount(prov_step_1)));
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(prov_step_1)));
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], prov_step_0 + prov_step_1);
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], 0);
     produce_blocks(blocks_before_payout - 1);
-    BOOST_CHECK_EQUAL(err.nothing_to_claim(), stake.claimprov(_whale, _alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(err.nothing_to_claim(), stake.claim(_whale, _alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], prov_step_0 + prov_step_1);
     produce_block();
-    BOOST_CHECK_EQUAL(success(), stake.claimprov(_whale, _alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.claim(_whale, _alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], 0);
     produce_block();
-    BOOST_CHECK_EQUAL(err.nothing_to_claim(), stake.claimprov(_whale, _alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(err.nothing_to_claim(), stake.claim(_whale, _alice, token._symbol.to_symbol_code()));
     produce_block();
 
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(limits, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("providing/limits");
+    install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
+    BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(500));
+    int64_t stake_amount = 50000000000;
+    stake.set_billed(1500, 1024);
+    bios.set_billed(500, 1);
+    
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, token.from_amount(stake_amount), ""));
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, {30, 10, 3, 1}, 42));
+    
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, token.from_amount(stake_amount)));
+    
+    BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
+    produce_block();
+    auto initial_res_cost = stake_amount - bios.get_account_balance(_whale);
+    BOOST_TEST_MESSAGE("initial cost = " << initial_res_cost);
+    auto res_balance = bios.get_account_balance(_whale);
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(stake_amount / 2)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], stake_amount / 2);
+    auto price = res_balance - (stake_amount / 2 + bios.get_account_balance(_whale));
+    BOOST_TEST_MESSAGE("price of delegateuse action = " << price);
+    BOOST_CHECK_EQUAL(err.not_enough_staked(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 + 1)));
+    auto required_stake = price * 2 + initial_res_cost + 1; // +1 due to rounding
+    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2))));
+    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake + 1))));
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], stake_amount - required_stake);
+    BOOST_CHECK_EQUAL(bios.get_account_balance(_whale), 0);
+    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.recalluse(_whale, _alice, token.from_amount(stake_amount / 2))));
+    produce_blocks(777);
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(stake_amount / 2)));
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(recall, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("providing/recall");
+    install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
+    BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(500));
+    int64_t stake_amount = 50000000000;
+    int64_t to_provide = 10000;
+    
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, token.from_amount(stake_amount), ""));
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, {30, 10, 3, 1}, 1));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
+    
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(to_provide)));
+    BOOST_CHECK_EQUAL(err.not_enough_delegated(), stake.recalluse(_whale, _alice, token.from_amount(to_provide + 1)));
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(to_provide)));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(to_provide)));
+    
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(to_provide - 2)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], to_provide);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], 2);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), to_provide - 2);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), 2);
+    
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(1)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], to_provide);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], 1);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), to_provide - 1);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), 1);
+    
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.claim(_whale, _alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], 1);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], 1);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), 0);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), 1);
+    
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(1)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], 1);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], 0);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), 1);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), 0);
+    BOOST_CHECK_EQUAL(err.nothing_to_claim(), stake.claim(_whale, _alice, token._symbol.to_symbol_code()));
+    
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.claim(_whale, _alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], 0);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], 0);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), 0);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), 0);
+    
+    produce_block();
+
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(delegate_out_of_payout, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("providing/delegate_out_of_payout");
+    
+    install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
+    BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(500));
+    int64_t stake_amount = 50000000000;
+    int64_t to_provide = 10000;
+    
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, token.from_amount(stake_amount), ""));
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, {30, 10, 3, 1}, 1));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
+    
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(to_provide)));
+        
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(10)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], to_provide);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], to_provide - 10);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), 10);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), to_provide - 10);
+    
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(3)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], to_provide);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], to_provide - 7);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), 7);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), to_provide - 7);
+    
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(8)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], to_provide + 1);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], to_provide + 1);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), 0);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), to_provide + 1);
+    
+    BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(to_provide)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], to_provide + 1);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], 1);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), to_provide);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), 1);
+    
+    //bw is disabled in this test
+    BOOST_CHECK_EQUAL(err.not_enough_staked(), stake.delegateuse(_whale, _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(stake_amount - 1)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], stake_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["received"], stake_amount);
+    BOOST_CHECK_EQUAL(stake.get_payout(token._symbol.to_symbol_code(), _whale, _alice), 0);
+    BOOST_CHECK_EQUAL(stake.get_prov(token._symbol.to_symbol_code(), _whale, _alice), stake_amount);
+    
 } FC_LOG_AND_RETHROW()
 
 BOOST_AUTO_TEST_SUITE_END() // providing
@@ -757,7 +908,7 @@ BOOST_FIXTURE_TEST_CASE(proxy_level_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(),  stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
     BOOST_CHECK_EQUAL(success(),  stake.setproxylvl(_bob,   token._symbol.to_symbol_code(), 3));
 
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_bob,   _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob,   _alice, token.from_amount(stake_amount)));
     //level: 4    3    2    1    0
     //            b -> a
     BOOST_CHECK_EQUAL(stake.get_agent(_alice,   token._symbol)["balance"], stake_amount * 2);
@@ -767,10 +918,10 @@ BOOST_FIXTURE_TEST_CASE(proxy_level_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(),  stake.setproxylvl(_bob,   token._symbol.to_symbol_code(), 1));
     
     BOOST_CHECK_EQUAL(stake.get_agent(_alice,   token._symbol)["balance"], stake_amount * 2);
-    BOOST_CHECK_EQUAL(err.no_funds(), stake.delegate(_alice, _bob,   token.from_amount(stake_amount * 2)));
+    BOOST_CHECK_EQUAL(err.no_funds(), stake.delegatevote(_alice, _bob,   token.from_amount(stake_amount * 2)));
     
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_alice, _bob,   token.from_amount(stake_amount)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob,   token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_alice, _bob,   token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _bob,   token.from_amount(stake_amount)));
     //level: 4    3    2    1    0
     //                 a -> b
     //       c--------------^     
@@ -795,18 +946,18 @@ BOOST_FIXTURE_TEST_CASE(proxy_level_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_alice,   token._symbol)["proxied"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["proxied"], stake_amount);
     
-    BOOST_CHECK_EQUAL(success(), stake.recall(_carol, _bob, token._symbol.to_symbol_code(), cfg::_100percent / 2));
+    BOOST_CHECK_EQUAL(success(), stake.recallvote(_carol, _bob, token._symbol.to_symbol_code(), cfg::_100percent / 2));
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["balance"], stake_amount / 2);
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["proxied"], stake_amount / 2);
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, token.from_amount(stake_amount / 2)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _bob, token.from_amount(stake_amount / 2)));
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["proxied"], stake_amount);
     produce_block();
     
-    BOOST_CHECK_EQUAL(success(), stake.recall(_carol, _bob, token._symbol.to_symbol_code(), cfg::_100percent / 2));
+    BOOST_CHECK_EQUAL(success(), stake.recallvote(_carol, _bob, token._symbol.to_symbol_code(), cfg::_100percent / 2));
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["balance"], stake_amount / 2);
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["proxied"], stake_amount / 2);
-    BOOST_CHECK_EQUAL(err.proxy_cannot_be_added(), stake.delegate(_carol, _alice, token.from_amount(stake_amount / 2)));
+    BOOST_CHECK_EQUAL(err.proxy_cannot_be_added(), stake.delegatevote(_carol, _alice, token.from_amount(stake_amount / 2)));
     
     BOOST_CHECK_EQUAL(success(),  stake.setproxylvl(_bob,   token._symbol.to_symbol_code(), 1));
     produce_blocks(2);
@@ -815,7 +966,7 @@ BOOST_FIXTURE_TEST_CASE(proxy_level_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["proxied"], stake_amount / 2);
     
     BOOST_CHECK_EQUAL(success(),  stake.setproxylvl(_carol,   token._symbol.to_symbol_code(), 3));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _alice, token.from_amount(stake_amount / 2)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _alice, token.from_amount(stake_amount / 2)));
     //level: 4    3    2    1    0
     //                 a    b
     //            c----^----^
@@ -861,9 +1012,9 @@ BOOST_FIXTURE_TEST_CASE(fee_parallel_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_whale, token._symbol.to_symbol_code(), 3));
     BOOST_CHECK_EQUAL(success(), stake.setproxyfee(_whale, token._symbol.to_symbol_code(), 1000));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_alice, _whale, token.from_amount(stake_amount)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_bob,   _whale, token.from_amount(stake_amount)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _whale, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_alice, _whale, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob,   _whale, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _whale, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_bob,   _whale, token._symbol.to_symbol_code(), 0, 2000));
     BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_carol, _whale, token._symbol.to_symbol_code(), 0, 3000));
     
@@ -885,7 +1036,7 @@ BOOST_FIXTURE_TEST_CASE(fee_parallel_test, cyber_stake_tester) try {
     BOOST_CHECK_CLOSE_FRACTION(double(stake.get_agent(_bob,   token._symbol)["balance"].as<int64_t>()), 
         double(stake_amount + acc_reward - fee_paid), 0.0001);
     BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["balance"], 0);
-    BOOST_CHECK_EQUAL(success(), stake.recall(_carol, _whale, token._symbol.to_symbol_code(), cfg::_100percent));
+    BOOST_CHECK_EQUAL(success(), stake.recallvote(_carol, _whale, token._symbol.to_symbol_code(), cfg::_100percent));
     BOOST_CHECK_CLOSE_FRACTION(double(stake.get_agent(_carol, token._symbol)["balance"].as<int64_t>()), 
         double(stake_amount + acc_reward - fee_paid), 0.0001);
     BOOST_CHECK_CLOSE_FRACTION(double(stake.get_agent(_whale, token._symbol)["balance"].as<int64_t>()), 
@@ -914,8 +1065,8 @@ BOOST_FIXTURE_TEST_CASE(fee_series_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 2));
     BOOST_CHECK_EQUAL(success(), stake.setproxyfee(_carol, token._symbol.to_symbol_code(), fee_pct_c));
     
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_alice, _bob,   token.from_amount(stake_amount)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_bob,   _carol, token.from_amount(stake_amount))); // half
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_alice, _bob,   token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob,   _carol, token.from_amount(stake_amount))); // half
     
     BOOST_CHECK_EQUAL(success(), stake.reward(_issuer, _carol, token.from_amount(reward_amount)));
     
@@ -967,7 +1118,7 @@ BOOST_FIXTURE_TEST_CASE(no_fee_test, cyber_stake_tester) try {
     
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 3));
     BOOST_CHECK_EQUAL(success(), stake.setproxyfee(_bob, token._symbol.to_symbol_code(), 1000));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_alice, _bob, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_alice, _bob, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["proxied"], stake_amount);
     BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"], stake_amount * 2);
@@ -999,8 +1150,8 @@ BOOST_FIXTURE_TEST_CASE(min_staked_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.setminstaked(_alice, token._symbol.to_symbol_code(), initial_min_staked));
     BOOST_CHECK_EQUAL(success(), token.transfer(_bob,   _code, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, token.from_amount(stake_amount)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_bob,   _alice, token.from_amount(stake_amount)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob,   _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _alice, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"], stake_amount);
     BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], stake_amount);
     BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_carol, _alice, token._symbol.to_symbol_code(), cfg::_100percent));
@@ -1014,18 +1165,18 @@ BOOST_FIXTURE_TEST_CASE(min_staked_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], stake_amount);
     BOOST_CHECK_EQUAL(err.min_for_election_violated(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
     BOOST_CHECK_EQUAL(success(), stake.setminstaked(_alice, token._symbol.to_symbol_code(), min_for_election));
-    BOOST_CHECK_EQUAL(err.no_agent_funds(), stake.delegate(_bob, _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(err.no_agent_funds(), stake.delegatevote(_bob, _alice, token.from_amount(stake_amount)));
     
     BOOST_CHECK_EQUAL(stake.get_agent(_alice,   token._symbol)["balance"], stake_amount + alice_stake);
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 3));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_bob, _carol, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob, _carol, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], stake_amount * 2);
     BOOST_CHECK_EQUAL(stake.get_agent(_alice,   token._symbol)["balance"], stake_amount * 2 + alice_stake);
-    BOOST_CHECK_EQUAL(success(), stake.recall(_bob, _carol, token._symbol.to_symbol_code(), cfg::_100percent));
+    BOOST_CHECK_EQUAL(success(), stake.recallvote(_bob, _carol, token._symbol.to_symbol_code(), cfg::_100percent));
     BOOST_CHECK_EQUAL(stake.get_agent(_alice,   token._symbol)["balance"], stake_amount + alice_stake);
      
     BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, token.from_amount(1)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_bob, _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob, _alice, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
     BOOST_CHECK_EQUAL(err.min_for_election_violated(), stake.setminstaked(_alice, token._symbol.to_symbol_code(), min_for_election - 1));
     
@@ -1058,7 +1209,7 @@ BOOST_FIXTURE_TEST_CASE(_3x3_test, cyber_stake_tester) try {
         BOOST_TEST_MESSAGE("delegate for grantor_level = " << grantor_level);
         for (size_t g = 0; g < agents_on_level; g++) {
             for (size_t a = 0; a < agents_on_level; a++) {
-                BOOST_CHECK_EQUAL(success(), stake.delegate(agents[grantor_level][g], agents[grantor_level - 1][a], token.from_amount(stake_amount / agents_on_level)));
+                BOOST_CHECK_EQUAL(success(), stake.delegatevote(agents[grantor_level][g], agents[grantor_level - 1][a], token.from_amount(stake_amount / agents_on_level)));
             }
         }
     }
@@ -1072,7 +1223,7 @@ BOOST_FIXTURE_TEST_CASE(_3x3_test, cyber_stake_tester) try {
     
     for (size_t g = 0; g < agents_on_level; g++) {
         for (size_t a = 0; a < agents_on_level; a++) {
-            BOOST_CHECK_EQUAL(success(), stake.recall(agents[grantor_level][g], agents[grantor_level - 1][a], token._symbol.to_symbol_code(), cfg::_100percent));
+            BOOST_CHECK_EQUAL(success(), stake.recallvote(agents[grantor_level][g], agents[grantor_level - 1][a], token._symbol.to_symbol_code(), cfg::_100percent));
         }
         BOOST_CHECK_EQUAL(success(), stake.updatefunds(agents[grantor_level][g], token._symbol.to_symbol_code()));
         BOOST_CHECK_EQUAL(stake.get_agent(agents[grantor_level][0], token._symbol)["proxied"], 0);
@@ -1132,10 +1283,10 @@ BOOST_FIXTURE_TEST_CASE(fuzz_test, cyber_stake_tester) try {
         bool can_delegate = grantor_balance_pre && q.get_amount() <= grantor_balance_pre;
         bool can_recall = false;
         if (can_delegate) {
-            BOOST_CHECK_EQUAL(success(), stake.delegate(grantor, agent, q));
+            BOOST_CHECK_EQUAL(success(), stake.delegatevote(grantor, agent, q));
         }
         else {
-            auto res = stake.recall(grantor, agent, token._symbol.to_symbol_code(), std::min(std::rand() % 11000, 10000));
+            auto res = stake.recallvote(grantor, agent, token._symbol.to_symbol_code(), std::min(std::rand() % 11000, 10000));
             if(success() != res) {
                 //BOOST_REQUIRE_MESSAGE(!err.is_system_err_mssg(res), res);
             }

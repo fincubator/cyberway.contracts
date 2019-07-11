@@ -94,7 +94,7 @@ struct structures {
         uint64_t id;
         symbol_code token_code;
         name grantor_name;
-        name agent_name;
+        name recipient_name;
         int16_t pct = 0;
         int64_t share = 0;
         int16_t break_fee = config::_100percent;
@@ -102,7 +102,7 @@ struct structures {
         
         uint64_t primary_key()const { return id; }
         using key_t = std::tuple<symbol_code, name, name>;
-        key_t by_key()const { return std::make_tuple(token_code, grantor_name, agent_name); }
+        key_t by_key()const { return std::make_tuple(token_code, grantor_name, recipient_name); }
     };
     
     struct [[eosio::table]] param {
@@ -127,26 +127,26 @@ struct structures {
     struct [[eosio::table]] provision {
         uint64_t id;
         symbol_code token_code;
-        name provider_name;
-        name consumer_name;
+        name grantor_name;
+        name recipient_name;
         int64_t amount = 0;
         
         uint64_t primary_key()const { return id; }
         using key_t = std::tuple<symbol_code, name, name>;
-        key_t by_key()const { return std::make_tuple(token_code, provider_name, consumer_name); }
+        key_t by_key()const { return std::make_tuple(token_code, grantor_name, recipient_name); }
     };
     
     struct [[eosio::table]] prov_payout {
         uint64_t id;
         symbol_code token_code;
-        name provider_name;
-        name consumer_name;
+        name grantor_name;
+        name recipient_name;
         int64_t amount;
         time_point_sec date;
         
         uint64_t primary_key()const { return id; }
         using key_t = std::tuple<symbol_code, name, name>;
-        key_t by_key()const { return std::make_tuple(token_code, provider_name, consumer_name); }
+        key_t by_key()const { return std::make_tuple(token_code, grantor_name, recipient_name); }
     };
 };
 
@@ -230,7 +230,7 @@ struct structures {
     static void check_grant_terms(const structures::agent& agent, int16_t break_fee, int64_t break_min_own_staked);
     void set_votes(symbol_code token_code, const std::map<name, int64_t>& votes_changes);
     
-    void update_provided(name provider_name, name consumer_name, asset quantity);
+    void update_provided(name grantor_name, name recipient_name, asset quantity);
 
 public:
 
@@ -329,11 +329,11 @@ public:
     
     [[eosio::action]] void open(name owner, symbol_code token_code, std::optional<name> ram_payer);
 
-    [[eosio::action]] void delegate(name grantor_name, name agent_name, asset quantity);
+    [[eosio::action]] void delegatevote(name grantor_name, name recipient_name, asset quantity);
     
-    [[eosio::action]] void setgrntterms(name grantor_name, name agent_name, symbol_code token_code, 
+    [[eosio::action]] void setgrntterms(name grantor_name, name recipient_name, symbol_code token_code, 
         int16_t pct, int16_t break_fee, int64_t break_min_own_staked);
-    [[eosio::action]] void recall(name grantor_name, name agent_name, symbol_code token_code, int16_t pct);
+    [[eosio::action]] void recallvote(name grantor_name, name recipient_name, symbol_code token_code, int16_t pct);
     
     [[eosio::action]] void withdraw(name account, asset quantity);
  
@@ -357,9 +357,9 @@ public:
             ("agent " + account.to_string() + " doesn't exist").c_str()).get_effective_stake();
     }
     
-    [[eosio::action]] void provide(name provider_name, name consumer_name, asset quantity);
-    [[eosio::action]] void deprive(name provider_name, name consumer_name, asset quantity);
+    [[eosio::action]] void delegateuse(name grantor_name, name recipient_name, asset quantity);
+    [[eosio::action]] void recalluse(name grantor_name, name recipient_name, asset quantity);
     
-    [[eosio::action]] void claimprov(name provider_name, name consumer_name, symbol_code token_code);
+    [[eosio::action]] void claim(name grantor_name, name recipient_name, symbol_code token_code);
 };
 } /// namespace cyber

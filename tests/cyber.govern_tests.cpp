@@ -272,13 +272,13 @@ BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_govern_tester) try {
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, stake_account_name, asset(1, token._symbol)));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 1));
     
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, asset(1, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _bob, asset(1, token._symbol)));
     
     govern.wait_schedule_activation();
     BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(crowd_and_bob));
     
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, stake_account_name, asset(2, token._symbol)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _alice, asset(2, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _alice, asset(2, token._symbol)));
     
     govern.wait_schedule_activation();
     BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(crowd_and_alice));

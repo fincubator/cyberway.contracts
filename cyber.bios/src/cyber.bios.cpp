@@ -2,6 +2,8 @@
 #include <cyber.bios/config.hpp>
 #include <cyber.govern/cyber.govern.hpp>
 #include <cyber.token/cyber.token.hpp>
+#include <cyber.stake/cyber.stake.hpp>
+#include <common/dispatchers.hpp>
 
 #include <eosio/system.hpp>
 
@@ -152,10 +154,33 @@ void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore
         eosio::check( current->high_bid < 0, "auction for name is not closed yet" );
         bids.erase( current );
     } else {
-        eosio::check( creator == prefix, "only prefix may create this account" );
+        eosio::check( creator == prefix, "only prefix may create this account" ); 
     }
 }
 
+void bios::check_stake(name account) {
+    auto token_code = system_token.code();
+    auto cost = eosio::get_used_resources_cost(account);
+    auto effective_stake = stake::get_effective_stake(account, token_code);
+    eosio::check(!stake::enabled(token_code) || (effective_stake >= cost),
+        "no staked tokens available due to resource usage");
 }
 
-EOSIO_DISPATCH( cyber::bios, (newaccount)(setprods)(setparams)(reqauth)(setabi)(setcode)(onblock)(checkwin)(bidname)(bidrefund) )
+void bios::on_stake_withdraw(name account, asset quantity) {
+    (void)quantity;
+    check_stake(account);
+}
+
+void bios::on_stake_provide(name provider_name, name consumer_name, asset quantity) {
+    (void)quantity;
+    (void)consumer_name; 
+    check_stake(provider_name);
+}
+
+}
+
+DISPATCH_WITH_UNSTAKING(cyber::bios, cyber::config::stake_name, on_stake_withdraw, on_stake_provide,
+    (newaccount)(setprods)(setparams)(reqauth)(setabi)(setcode)(onblock)(checkwin)(bidname)(bidrefund)
+)
+
+

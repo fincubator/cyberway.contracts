@@ -49,3 +49,20 @@ extern "C" { \
         } \
    } \
 } \
+
+
+#define DISPATCH_WITH_UNSTAKING(TYPE, STAKE, WITHDRAW, PROVIDE, MEMBERS) \
+extern "C" { \
+   void apply(uint64_t receiver, uint64_t code, uint64_t action) { \
+        if (code == receiver) { \
+            switch (action) { \
+                EOSIO_DISPATCH_HELPER(TYPE, MEMBERS) \
+            } \
+        } else if (code == STAKE.value && action == "withdraw"_n.value) { \
+            eosio::execute_action(eosio::name(receiver), eosio::name(code), &TYPE::WITHDRAW); \
+        } else if (code == STAKE.value && action == "provide"_n.value) { \
+            eosio::execute_action(eosio::name(receiver), eosio::name(code), &TYPE::PROVIDE); \
+        } \
+   } \
+} \
+

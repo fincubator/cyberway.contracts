@@ -12,6 +12,22 @@ struct cyber_stake_api: base_contract_api {
     bool verbose;
     uint32_t billed_cpu_time_us = base_tester::DEFAULT_BILLED_CPU_TIME_US;
     uint64_t billed_ram_bytes = base_tester::DEFAULT_BILLED_RAM_BYTES;
+    
+    int64_t get_amount(symbol_code token_code, name grantor_name, name recipient_name, const std::vector<fc::variant>& all) {
+        for(auto& v : all) {
+            auto o = mvo(v);
+            if (v["token_code"].as<symbol_code>() == token_code &&
+                v["grantor_name"].as<account_name>() == grantor_name &&
+                v["recipient_name"].as<account_name>() == recipient_name) 
+            {
+                auto ret = v["amount"].as<int64_t>();
+                BOOST_REQUIRE(ret > 0);
+                return ret;
+            }
+        }
+        return 0;
+    }
+
 public:
     cyber_stake_api(golos_tester* tester, name code, bool verbose_ = true)
     :   base_contract_api(tester, code), verbose(verbose_){}
@@ -20,14 +36,13 @@ public:
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol,
-            std::vector<uint8_t> max_proxies, int64_t payout_step_length, uint16_t payout_steps_num,
+            std::vector<uint8_t> max_proxies, int64_t depriving_window,
             int64_t min_own_staked_for_election = 0) {
         
         return push(N(create), issuer, args()
             ("token_symbol", token_symbol)
             ("max_proxies", max_proxies)
-            ("payout_step_length", payout_step_length)
-            ("payout_steps_num", payout_steps_num)
+            ("depriving_window", depriving_window)
             ("min_own_staked_for_election", min_own_staked_for_election)
         );
     }
@@ -49,25 +64,25 @@ public:
         db.modify(*db.find<stake_stat_object>(token_code.value), [&]( auto& s) { s.enabled = false; });
     }
     
-    action_result delegate(account_name grantor_name, account_name agent_name, asset quantity) {
+    action_result delegatevote(account_name grantor_name, account_name recipient_name, asset quantity) {
         if (verbose) {
-            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " delegates " << quantity <<  " to " << agent_name);
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " delegates " << quantity <<  " to " << recipient_name);
         }
-        return push(N(delegate), grantor_name, args()
+        return push(N(delegatevote), grantor_name, args()
             ("grantor_name", grantor_name)
-            ("agent_name", agent_name)
+            ("recipient_name", recipient_name)
             ("quantity", quantity)
         );
     }
     
-    action_result setgrntterms(account_name grantor_name, account_name agent_name, symbol_code token_code,
+    action_result setgrntterms(account_name grantor_name, account_name recipient_name, symbol_code token_code,
         int16_t pct, int16_t break_fee = cyber::config::_100percent, int64_t break_min_own_staked = 0) {
         if (verbose) {
-            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " sets grant terms for " << agent_name);
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " sets grant terms for " << recipient_name);
         }
         return push(N(setgrntterms), grantor_name, args()
             ("grantor_name", grantor_name)
-            ("agent_name", agent_name)
+            ("recipient_name", recipient_name)
             ("token_code", token_code)
             ("pct", pct)
             ("break_fee", break_fee)
@@ -75,14 +90,14 @@ public:
         );
     }
     
-    action_result recall(account_name grantor_name, account_name agent_name, symbol_code token_code, int16_t pct) {
+    action_result recallvote(account_name grantor_name, account_name recipient_name, symbol_code token_code, int16_t pct) {
         if (verbose) {
             BOOST_TEST_MESSAGE("--- " << grantor_name <<  " recalls " << pct 
-                <<  "(" << token_code << ")" << " from " << agent_name);
+                <<  "(" << token_code << ")" << " from " << recipient_name);
         }
-        return push(N(recall), grantor_name, args()
+        return push(N(recallvote), grantor_name, args()
             ("grantor_name", grantor_name)
-            ("agent_name", agent_name)
+            ("recipient_name", recipient_name)
             ("token_code", token_code)
             ("pct", pct)
         );
@@ -95,26 +110,6 @@ public:
         return push(N(withdraw), account, args()
             ("account", account)
             ("quantity", quantity)
-        );
-    }
-    
-    action_result cancelwd(account_name account, asset quantity) {
-        if (verbose) {
-            BOOST_TEST_MESSAGE("--- " << account <<  " cancels withdraw " << quantity);
-        }
-        return push(N(cancelwd), account, args()
-            ("account", account)
-            ("quantity", quantity)
-        );
-    }
-    
-    action_result claim(account_name account, symbol_code token_code) {
-        if (verbose) {
-            BOOST_TEST_MESSAGE("--- " << account <<  " claims " << symbol(token_code << 8).name());
-        }
-        return push(N(claim), account, args()
-            ("account", account)
-            ("token_code", token_code)
         );
     }
     
@@ -157,6 +152,36 @@ public:
         );
     }
     
+    action_result delegateuse(account_name grantor_name, account_name recipient_name, asset quantity) {
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " provides " << quantity << " to " << recipient_name);
+        }
+        return push(N(delegateuse), grantor_name, args()
+            ("grantor_name", grantor_name)
+            ("recipient_name", recipient_name)
+            ("quantity", quantity)
+        );
+    }
+    
+    action_result recalluse(account_name grantor_name, account_name recipient_name, asset quantity) {
+        if (verbose) {
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " deprives " << recipient_name << " of " << quantity);
+        }
+        return push(N(recalluse), grantor_name, args()
+            ("grantor_name", grantor_name)
+            ("recipient_name", recipient_name)
+            ("quantity", quantity)
+        );
+    }
+    
+    action_result claim(account_name grantor_name, account_name recipient_name, symbol_code token_code) {
+        return push(N(claim), grantor_name, args()
+            ("grantor_name", grantor_name)
+            ("recipient_name", recipient_name)
+            ("token_code", token_code)
+        );
+    }
+
     action_result register_candidate(account_name account, symbol_code token_code, bool need_to_open = true) {
         if (need_to_open) {
             auto ret = open(account, token_code);
@@ -192,6 +217,14 @@ public:
         }
         return variant();
     }
+    
+    int64_t get_payout(symbol_code token_code, name grantor_name, name recipient_name) {
+        return get_amount(token_code, grantor_name, recipient_name, _tester->get_all_chaindb_rows(_code, _code.value, N(provpayout), false));
+    }
+    
+    int64_t get_prov(symbol_code token_code, name grantor_name, name recipient_name) {
+        return get_amount(token_code, grantor_name, recipient_name, _tester->get_all_chaindb_rows(_code, _code.value, N(provision), false));
+    }
 
     variant make_agent(
             account_name account, symbol token_symbol, 
@@ -202,7 +235,9 @@ public:
             int64_t shares_sum = 0,
             int64_t own_share = 0,
             int16_t fee = 0,
-            int64_t min_own_staked = 0
+            int64_t min_own_staked = 0,
+            int64_t provided = 0,
+            int64_t received = 0
         ) {
         return mvo()
             ("token_code", token_symbol.to_symbol_code())
@@ -214,7 +249,9 @@ public:
             ("shares_sum", shares_sum)
             ("own_share", own_share)
             ("fee", fee)
-            ("min_own_staked", min_own_staked);
+            ("min_own_staked", min_own_staked)
+            ("provided", provided)
+            ("received", received);
     }
     
     int64_t get_total_votes(symbol_code token_code) {

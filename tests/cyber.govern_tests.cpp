@@ -53,7 +53,7 @@ public:
         BOOST_TEST_MESSAGE("--- creating token and stake"); 
         BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(max_supply_amount, token._symbol)));
         BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, 
-            std::vector<uint8_t>{30, 10, 3, 1}, 7 * 24 * 60 * 60, 52));
+            std::vector<uint8_t>{30, 10, 3, 1}, 30 * 24 * 60 * 60));
             
         BOOST_TEST_MESSAGE("--- installing governance contract");
         install_contract(govern_account_name, contracts::govern_wasm(), contracts::govern_abi());
@@ -272,13 +272,13 @@ BOOST_FIXTURE_TEST_CASE(set_producers_test, cyber_govern_tester) try {
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, stake_account_name, asset(1, token._symbol)));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 1));
     
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _bob, asset(1, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _bob, asset(1, token._symbol)));
     
     govern.wait_schedule_activation();
     BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(crowd_and_bob));
     
     BOOST_CHECK_EQUAL(success(), token.transfer(_carol, stake_account_name, asset(2, token._symbol)));
-    BOOST_CHECK_EQUAL(success(), stake.delegate(_carol, _alice, asset(2, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _alice, asset(2, token._symbol)));
     
     govern.wait_schedule_activation();
     BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(crowd_and_alice));

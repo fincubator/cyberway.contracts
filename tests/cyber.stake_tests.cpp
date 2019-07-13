@@ -183,6 +183,9 @@ public:
         static bool is_transaction_cpu_limit_err_mssg(const std::string& arg) {
             return arg.find("is greater than the maximum billable CPU time for the transaction") != std::string::npos;
         }
+        static bool is_transaction_storage_limit_err_mssg(const std::string& arg) {
+            return arg.find("transaction resource(3) usage is too high") != std::string::npos;
+        }
         static bool is_block_cpu_limit_err_mssg(const std::string& arg) {
             return arg.find("is greater than the billable CPU time left in the block") != std::string::npos;
         }
@@ -494,15 +497,15 @@ BOOST_FIXTURE_TEST_CASE(hard_limits_tests, cyber_stake_tester) try {
     produce_block();
     
     auto pending_usage = bios.get_pending_usage()[3];
-    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK(err.is_transaction_storage_limit_err_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0)));
     
     pending_usage = bios.get_pending_usage()[3];
-    err.is_block_res_limit_err_mssg(stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK(err.is_transaction_storage_limit_err_mssg(stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0)));
     pending_usage = bios.get_pending_usage()[3];
     
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
     pending_usage = bios.get_pending_usage()[3];
-    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK(err.is_transaction_storage_limit_err_mssg(stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0)));
     pending_usage = bios.get_pending_usage()[3];
     
     produce_block();

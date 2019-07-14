@@ -770,7 +770,7 @@ BOOST_FIXTURE_TEST_CASE(limits, cyber_stake_tester) try {
     auto price = res_balance - (stake_amount / 2 + bios.get_account_balance(_whale));
     BOOST_TEST_MESSAGE("price of delegateuse action = " << price);
     BOOST_CHECK_EQUAL(err.not_enough_staked(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 + 1)));
-    auto required_stake = price * 2 + initial_res_cost + 1; // +1 due to rounding
+    auto required_stake = price * 2 + initial_res_cost - 1; // -1 due to rounding
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2))));
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake + 1))));
     BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake)));

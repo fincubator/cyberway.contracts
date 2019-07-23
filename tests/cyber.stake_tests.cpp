@@ -368,7 +368,7 @@ BOOST_FIXTURE_TEST_CASE(open_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(err.agent_exists(), stake.open(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
-    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.open(_carol, token._symbol.to_symbol_code())));
+    BOOST_CHECK_EQUAL("explicitly_billed_exception", stake.open(_carol, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(err.no_agent(), stake.delegatevote(_alice, _carol, stake_u));
     BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
     produce_block();
@@ -720,7 +720,7 @@ BOOST_FIXTURE_TEST_CASE(basic_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("alice's resource balance = " << bios.get_account_balance(_alice));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 2));
     BOOST_TEST_MESSAGE("alice's resource balance = " << bios.get_account_balance(_alice));
-    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1)));
+    BOOST_CHECK_EQUAL("explicitly_billed_exception", stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1));
     BOOST_TEST_MESSAGE("alice's resource balance = " << bios.get_account_balance(_alice));
     
     produce_block();
@@ -770,13 +770,13 @@ BOOST_FIXTURE_TEST_CASE(limits, cyber_stake_tester) try {
     auto price = res_balance - (stake_amount / 2 + bios.get_account_balance(_whale));
     BOOST_TEST_MESSAGE("price of delegateuse action = " << price);
     BOOST_CHECK_EQUAL(err.not_enough_staked(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 + 1)));
-    auto required_stake = price * 2 + initial_res_cost - 1; // -1 due to rounding
+    auto required_stake = price * 2 + initial_res_cost + 1; // 1 due to rounding
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2))));
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake + 1))));
     BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake)));
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], stake_amount - required_stake);
     BOOST_CHECK_EQUAL(bios.get_account_balance(_whale), 0);
-    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.recalluse(_whale, _alice, token.from_amount(stake_amount / 2))));
+    BOOST_CHECK_EQUAL("explicitly_billed_exception", stake.recalluse(_whale, _alice, token.from_amount(stake_amount / 2)));
     produce_blocks(777);
     BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(stake_amount / 2)));
 } FC_LOG_AND_RETHROW()

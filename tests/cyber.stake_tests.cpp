@@ -749,6 +749,7 @@ BOOST_FIXTURE_TEST_CASE(limits, cyber_stake_tester) try {
     install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
     BOOST_CHECK_EQUAL(success(), bios.set_min_transaction_cpu_usage(500));
     int64_t stake_amount = 50000000000;
+    int64_t delta = 5;
     
     token.set_billed(1024, 1024);
     stake.set_billed(1500, 1024);
@@ -774,10 +775,10 @@ BOOST_FIXTURE_TEST_CASE(limits, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(err.not_enough_staked(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 + 1)));
     auto required_stake = price * 2 + initial_res_cost;
     BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2))));
-    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake + 1))));
-    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake)));
-    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], stake_amount - required_stake);
-    BOOST_CHECK_EQUAL(bios.get_account_balance(_whale), 0);
+    BOOST_CHECK(err.is_insufficient_staked_mssg(stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake + delta))));
+    BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _bob, token.from_amount(stake_amount / 2 - required_stake - delta)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["provided"], stake_amount - required_stake - delta);
+    BOOST_CHECK_EQUAL(bios.get_account_balance(_whale), delta);
     BOOST_CHECK_EQUAL("explicitly_billed_exception", stake.recalluse(_whale, _alice, token.from_amount(stake_amount / 2)));
     produce_blocks(777);
     BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(stake_amount / 2)));

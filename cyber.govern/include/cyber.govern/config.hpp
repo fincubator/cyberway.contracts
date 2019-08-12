@@ -19,14 +19,14 @@ static constexpr uint16_t max_producers_num = 101;
 
 static constexpr uint16_t active_reserve_producers_num = 1;
 
-static constexpr auto emission_addition = 10 * _1percent;
-static constexpr auto emission_factor   = 10 * _1percent;
+static constexpr auto emission_addition = 953 * _1percent / 100; // 10% annual
+static constexpr auto emission_factor   = 870 * _1percent / 100; //+10% annual
 
 static constexpr auto emission_min_arg = 25 * _1percent;
 static constexpr auto emission_max_arg = 75 * _1percent;
-//annual emission is equal to emission_addition                   if share of tokens voted <= emission_min_arg
-//annual emission is equal to emission_addition + emission_factor if share of tokens voted >= emission_max_arg
-//linear interpolation between these two points
+//annual emission is equal to 10% if share of tokens voted <= emission_min_arg
+//annual emission is equal to 20% if share of tokens voted >= emission_max_arg
+//linear interpolation between these two points (actually, due to the compound pct, this function is slightly convex)
 
 static constexpr auto block_reward_pct     = 10 * _1percent;
 static constexpr auto workers_reward_pct   = 2222 * _1percent / 100; // not including block reward

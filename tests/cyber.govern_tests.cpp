@@ -130,9 +130,10 @@ BOOST_AUTO_TEST_SUITE(cyber_govern_tests)
 
 BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_govern_tester) try {
     BOOST_TEST_MESSAGE("Rewards test");
-    deploy_sys_contracts();
+    int64_t init_supply = 1000000000000;
+    deploy_sys_contracts(init_supply * 2);
     int64_t init_amount = 1;
-    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(cfg::blocks_per_year * 100, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(init_supply, token._symbol), ""));
     BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(init_amount, token._symbol), "alice"));
@@ -151,17 +152,17 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_govern_tester) try {
     }
     auto emission_per_block = get_emission_per_block(double(cfg::emission_addition + cfg::emission_factor) / cfg::_100percent);
     auto rewards_of_elected = get_rewards_of_elected(emission_per_block, govern.get_block_num(), prod_blocks);
-    BOOST_CHECK_EQUAL(token.get_account(cfg::worker_name)["balance"].as<asset>().get_amount(), 
-        get_rewards_of_workers(emission_per_block, govern.get_block_num(), prod_blocks));
+    BOOST_CHECK_CLOSE_FRACTION(double(token.get_account(cfg::worker_name)["balance"].as<asset>().get_amount()), 
+        double(get_rewards_of_workers(emission_per_block, govern.get_block_num(), prod_blocks)), 0.0001);
     auto last_prod = control->head_block_producer();
     auto prev_prod = last_prod == _alice ? _bob : _alice;
     
     BOOST_CHECK_EQUAL(govern.get_balance(last_prod), -1);
     BOOST_CHECK_EQUAL(govern.get_balance(prev_prod), -1);
-    BOOST_CHECK_EQUAL(stake.get_agent(last_prod, token._symbol)["balance"], 
-        init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[last_prod]) + rewards_of_elected[last_prod]);
-    BOOST_CHECK_EQUAL(stake.get_agent(prev_prod, token._symbol)["balance"], 
-        init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[prev_prod]) + rewards_of_elected[prev_prod]);
+    BOOST_CHECK_CLOSE_FRACTION(double(stake.get_agent(last_prod, token._symbol)["balance"].as<int64_t>()), 
+        double(init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[last_prod]) + rewards_of_elected[last_prod]), 0.0001);
+    BOOST_CHECK_CLOSE_FRACTION(double(stake.get_agent(prev_prod, token._symbol)["balance"].as<int64_t>()),
+       double(init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[prev_prod]) + rewards_of_elected[prev_prod]), 0.0001);
     
     auto balance_a = stake.get_agent(_alice, token._symbol)["balance"];
     auto balance_b = stake.get_agent(_bob,   token._symbol)["balance"];
@@ -180,8 +181,8 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_govern_tester) try {
     }
     produce_block();
     
-    BOOST_CHECK_EQUAL(govern.get_balance(last_prod), get_reward_for_blocks(emission_per_block, 1));
-    BOOST_CHECK_EQUAL(govern.get_balance(prev_prod), get_reward_for_blocks(emission_per_block, blocks_num));
+    BOOST_CHECK_CLOSE_FRACTION(double(govern.get_balance(last_prod)), double(get_reward_for_blocks(emission_per_block, 1)), 0.0001);
+    BOOST_CHECK_CLOSE_FRACTION(double(govern.get_balance(prev_prod)), double(get_reward_for_blocks(emission_per_block, blocks_num)), 0.0001);
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["balance"], balance_a);
     BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"], balance_b);
     produce_block();

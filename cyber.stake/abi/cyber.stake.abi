@@ -43,7 +43,7 @@
             "name": "enable_args",
             "base": "",
             "fields": [
-                { "type": "symbol",         "name": "token_symbol" }
+                { "type": "symbol_code",    "name": "token_code" }
             ]
         },{
             "name": "delegate_args",
@@ -135,7 +135,7 @@
             "base": "",
             "fields": [
                 { "type": "symbol_code",    "name": "token_code" },
-                { "type": "name[]",         "name": "accounts" } 
+                { "type": "name[]",         "name": "accounts" }
             ]
         },{
             "name": "claim_args",

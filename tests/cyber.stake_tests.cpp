@@ -167,7 +167,12 @@ public:
         const string too_many_proxies() {
             return amsg(std::string("can't set proxy level, user has too many proxies"));
         }
-        
+
+        const string bad_precision          = amsg("symbol precision mismatch");
+        const string quantity_bad_precision = amsg("quantity precision mismatch");
+        const string quantity_le0           = amsg("quantity must be positive");
+        const string dlgvote_no_staking     = amsg("no staking for token");
+
         static bool is_insufficient_staked_mssg(const std::string& arg) {
             return arg.find("has insufficient staked tokens") != std::string::npos;
         }
@@ -213,7 +218,10 @@ BOOST_FIXTURE_TEST_CASE(basic_tests, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, stake_a + stake_a2, ""));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _bob,   stake_b, ""));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, stake_c, ""));
- 
+
+    const auto scode = token._symbol.name().c_str();
+    BOOST_CHECK_EQUAL(err.bad_precision, stake.create(_issuer, symbol{8, scode}, max_proxies, 30 * 24 * 60 * 60));
+
     BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, 30 * 24 * 60 * 60));
     BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
@@ -360,20 +368,48 @@ BOOST_FIXTURE_TEST_CASE(increase_proxy_level_test, cyber_stake_tester) try {
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE(open_test, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("Open tests");
+    BOOST_TEST_MESSAGE("--- init");
     asset stake_u(100, token._symbol);
     BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(10000000000, token._symbol)));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, stake_u , ""));
     BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, {1}, 30 * 24 * 60 * 60));
     BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, stake_u));
+
+    BOOST_TEST_MESSAGE("--- open and enable");
     BOOST_CHECK_EQUAL(err.agent_exists(), stake.open(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
     BOOST_CHECK_EQUAL("explicitly_billed_exception", stake.open(_carol, token._symbol.to_symbol_code()));
+
+    BOOST_TEST_MESSAGE("--- fail of delegate vote to not agent");
     BOOST_CHECK_EQUAL(err.no_agent(), stake.delegatevote(_alice, _carol, stake_u));
     BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
     produce_block();
     BOOST_CHECK_EQUAL(err.agent_exists(), stake.open(_carol, token._symbol.to_symbol_code(), _alice));
     produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(delegatevote_args_test, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("Delegate vote base arguments tests");
+    BOOST_TEST_MESSAGE("--- init");
+    const auto sym = token._symbol;
+    asset stake_u(100, sym);
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(10000000000, sym)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, stake_u , ""));
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, sym, {1}, 30 * 24 * 60 * 60));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, stake_u));
+    BOOST_CHECK_EQUAL(success(), stake.open(_bob, sym.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, sym));
+
+    BOOST_TEST_MESSAGE("--- delegate vote");
+    BOOST_CHECK_EQUAL(err.quantity_le0, stake.delegatevote(_alice, _carol, asset{-1, sym}));
+    BOOST_CHECK_EQUAL(err.quantity_le0, stake.delegatevote(_alice, _carol, asset{0, sym}));
+    const auto scode = sym.name().c_str();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.delegatevote(_alice, _carol, asset{1, symbol{8, scode}}));
+    BOOST_CHECK_EQUAL(err.dlgvote_no_staking, stake.delegatevote(_alice, _carol, asset{1, symbol{4, "BAD"}}));
+    BOOST_CHECK_EQUAL(err.no_agent(), stake.delegatevote(_alice, _carol, stake_u));
+
 } FC_LOG_AND_RETHROW()
 
 BOOST_AUTO_TEST_SUITE(bandwidth)
@@ -629,6 +665,8 @@ BOOST_FIXTURE_TEST_CASE(general_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(err.no_funds(), stake.withdraw(_alice, token.from_amount(stake_amount + 1)));
     BOOST_CHECK_EQUAL(err.must_withdraw_positive(), stake.withdraw(_alice, token.from_amount(-1)));
     BOOST_CHECK_EQUAL(err.must_withdraw_positive(), stake.withdraw(_alice, token.from_amount(0)));
+    const auto scode = token._symbol.name().c_str();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.withdraw(_alice, asset{1, symbol{8, scode}}));
     BOOST_CHECK_EQUAL(success(), stake.withdraw(_alice, token.from_amount(stake_amount / 2)));
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["balance"], stake_amount / 2);
     produce_block();
@@ -706,6 +744,8 @@ BOOST_FIXTURE_TEST_CASE(basic_test, cyber_stake_tester) try {
     int64_t prov_step_0 = 50;
     BOOST_TEST_MESSAGE("alice's resource balance = " << res_balance);
     BOOST_CHECK_EQUAL(res_balance, 0);
+    const auto scode = token._symbol.name().c_str();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.delegateuse(_whale, _alice, asset{1, symbol{8, scode}}));
     BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(prov_step_0)));
     res_balance = bios.get_account_balance(_alice);
     BOOST_TEST_MESSAGE("alice's resource balance = " << res_balance);
@@ -796,8 +836,10 @@ BOOST_FIXTURE_TEST_CASE(recall, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, token.from_amount(stake_amount)));
     BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
-    
+
     BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(to_provide)));
+    const auto scode = token._symbol.name().c_str();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.recalluse(_whale, _alice, asset{1, symbol{8, scode}}));
     BOOST_CHECK_EQUAL(err.not_enough_delegated(), stake.recalluse(_whale, _alice, token.from_amount(to_provide + 1)));
     BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(to_provide)));
     produce_block();

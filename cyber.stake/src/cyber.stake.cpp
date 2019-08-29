@@ -129,9 +129,10 @@ void stake::delegatevote(name grantor_name, name recipient_name, asset quantity)
     require_auth(grantor_name);
     eosio::check(quantity.amount > 0, "quantity must be positive");
     params params_table(table_owner, table_owner.value);
-     auto token_code = quantity.symbol.code();
+    auto token_code = quantity.symbol.code();
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
-    
+    eosio::check(param.token_symbol == quantity.symbol, "quantity precision mismatch");
+
     update_stake_proxied(token_code, recipient_name);
      
     agents agents_table(table_owner, table_owner.value);
@@ -270,7 +271,8 @@ void stake::withdraw(name account, asset quantity) {
     auto token_code = quantity.symbol.code();
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
-    
+    eosio::check(param.token_symbol == quantity.symbol, "quantity precision mismatch");
+
     update_stake_proxied(token_code, account);
      
     agents agents_table(table_owner, table_owner.value);
@@ -389,10 +391,11 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     agents_idx.modify(agent, name(), [&](auto& a) {
         a.proxy_level = level;
     });
-} 
- 
-void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window, int64_t min_own_staked_for_election)
-{
+}
+
+void stake::create(
+    symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window, int64_t min_own_staked_for_election
+) {
     auto token_code = token_symbol.code();
     eosio::check(max_proxies.size(), "no proxy levels are specified");
     eosio::check(max_proxies.size() < std::numeric_limits<uint8_t>::max(), "too many proxy levels");
@@ -402,6 +405,8 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_
         }
     eosio::check(depriving_window > 0, "incorrect depriving_window");
     eosio::check(min_own_staked_for_election >= 0, "incorrect min_own_staked_for_election");
+    auto supply = eosio::token::get_supply(config::token_name, token_code);
+    eosio::check(supply.symbol == token_symbol, "symbol precision mismatch");
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
     params params_table(table_owner, table_owner.value);
@@ -425,8 +430,7 @@ void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_
     };});    
 }
 
-void stake::enable(symbol token_symbol) {
-    auto token_code = token_symbol.code();
+void stake::enable(symbol_code token_code) {
     auto issuer = eosio::token::get_issuer(config::token_name, token_code);
     require_auth(issuer);
     modify_stat(token_code, [&](auto& s) {
@@ -544,12 +548,12 @@ void stake::pick(symbol_code token_code, std::vector<name> accounts) {
 }
 
 void stake::update_provided(name grantor_name, name recipient_name, asset quantity) {
-    
     require_auth(grantor_name);
     eosio::check(grantor_name != recipient_name, "can't delegate to yourself");
     auto token_code = quantity.symbol.code();
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
+    eosio::check(param.token_symbol == quantity.symbol, "quantity precision mismatch");
     update_stake_proxied(token_code, grantor_name);
     
     agents agents_table(table_owner, table_owner.value);

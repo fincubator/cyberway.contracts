@@ -52,13 +52,17 @@ public:
             push(N(open), ram_payer, args()("owner", owner)("token_code", token_code)("ram_payer", ram_payer)) : 
             push(N(open), owner,     args()("owner", owner)("token_code", token_code));
     }
-    
-    action_result enable(account_name issuer, symbol token_symbol) {
+
+    action_result enable(account_name issuer, symbol_code token_code) {
         return push(N(enable), issuer, args()
-            ("token_symbol", token_symbol)
+            ("token_code", token_code)
         );
     }
-    
+    action_result enable(account_name issuer, symbol token_symbol) {
+        // Note: deprecated, should be removed
+        return enable(issuer, token_symbol.to_symbol_code());
+    }
+
     void disable(symbol_code token_code) {
         auto& db = _tester->control->chaindb();
         db.modify(*db.find<stake_stat_object>(token_code.value), [&]( auto& s) { s.enabled = false; });

@@ -317,10 +317,11 @@ public:
 
     using contract::contract;
 
-    [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window, int64_t min_own_staked_for_election);
-        
-    [[eosio::action]] void enable(symbol token_symbol);
-    
+    [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window,
+        int64_t min_own_staked_for_election);
+
+    [[eosio::action]] void enable(symbol_code token_symbol);
+
     static inline bool enabled(symbol_code token_code) {
         staking_exists(token_code);
         stats stats_table(table_owner, table_owner.value);

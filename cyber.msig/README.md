@@ -1,5 +1,9 @@
-cyber.msig
---------
+<img width="400" src="../docs/logo.jpg" />  
+
+***  
+[![GitHub](https://img.shields.io/github/license/cyberway/cyberway.contracts.svg)](https://github.com/cyberway/cyberway.contracts/blob/master/LICENSE)
+
+# cyber.msig
 
 Actions:
 The naming convention is codeaccount::actionname followed by a list of paramters.

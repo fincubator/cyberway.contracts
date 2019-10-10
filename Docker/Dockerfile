@@ -1,6 +1,6 @@
 ARG buildtype=stable
 FROM cyberway/cyberway:$buildtype as cyberway
-FROM cyberway/cyberway.cdt:$buildtype as cdt
+FROM cyberway/cyberway.cdt:ci-mainstream as cdt
 
 FROM cyberway/builder:$buildtype as builder
 COPY --from=cdt /opt/cyberway.cdt /opt/cyberway.cdt
@@ -16,7 +16,7 @@ RUN cd cyberway.contracts \
         -GNinja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/opt/cyberway.contracts/ \
-        -Deosio.cdt_DIR=/opt/cyberway.cdt/lib/cmake/eosio.cdt \
+        -Dcyberway.cdt_DIR=/opt/cyberway.cdt/lib/cmake/cyberway.cdt \
         -DEOSIO_ROOT=/opt/cyberway \
     && cmake --build build --target install
 

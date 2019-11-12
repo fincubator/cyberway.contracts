@@ -88,6 +88,17 @@ struct structures {
             eosio::check(received >= 0, "SYSTEM: incorrect received");
             return (own_funds - provided) + received;
         }
+        void check_own_staked(name privileged, int64_t min_own_staked_for_election) const {
+            if (!has_auth(privileged)) {
+                //there are accounts with inconsistent balance and min_own_staked values, 
+                //to test their deactivation we allow _self to set such values
+                
+                eosio::check(proxy_level || min_own_staked >= min_own_staked_for_election,
+                    "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
+                eosio::check(get_own_funds() >= min_own_staked, "own staked funds can't be less than min_own_staked");
+            }
+
+        }
      };
 
     struct [[eosio::table]] grant {
@@ -207,16 +218,8 @@ struct structures {
         auto agents_idx = agents_table.get_index<"bykey"_n>();
         auto agent = get_agent_itr(token_code, agents_idx, account);
         agents_idx.modify(agent, name(), f);
-    }
-
-    template<typename Lambda>
-    static void modify_candidate(name account, symbol_code token_code, Lambda f) {
-        require_auth(account);
-        candidates candidates_table(table_owner, table_owner.value);
-        auto cands_idx = candidates_table.get_index<"bykey"_n>();
-        auto cand = cands_idx.find(std::make_tuple(token_code, account));
-        eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
-        cands_idx.modify(cand, name(), f);
+        params params_table(table_owner, table_owner.value);
+        agent->check_own_staked(_self, params_table.get(token_code.raw(), "no staking for token").min_own_staked_for_election);
     }
 
     template<typename Lambda>
@@ -343,8 +346,8 @@ public:
     [[eosio::action]] void setproxylvl(name account, symbol_code token_code, uint8_t level);
     [[eosio::action]] void setproxyfee(name account, symbol_code token_code, int16_t fee);
     [[eosio::action]] void setminstaked(name account, symbol_code token_code, int64_t min_own_staked);
-    [[eosio::action]] void setkey(name account, symbol_code token_code, public_key signing_key);
-
+    [[eosio::action]] void setkey(name account, symbol_code token_code, std::optional<public_key> signing_key);
+    
     [[eosio::action]] void updatefunds(name account, symbol_code token_code);
 
     [[eosio::action]] void reward(std::vector<std::pair<name, int64_t> > rewards, symbol sym);

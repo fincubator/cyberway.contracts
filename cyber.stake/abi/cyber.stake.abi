@@ -114,7 +114,7 @@
             "fields": [
                 { "type": "name",           "name": "account" },
                 { "type": "symbol_code",    "name": "token_code"  },
-                { "type": "public_key",     "name": "signing_key"  }
+                { "type": "public_key?",    "name": "signing_key"  }
             ]
         },{
             "name": "name_int_pair",

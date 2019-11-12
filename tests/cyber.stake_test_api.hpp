@@ -27,6 +27,13 @@ struct cyber_stake_api: base_contract_api {
         }
         return 0;
     }
+    
+    action_result push_maybe_msig(account_name act, account_name actor, mvo a, bool self_signed) {
+        return self_signed ?
+            push_msig(act, {{actor, config::active_name}, {_code, config::active_name}}, 
+                {actor, _code}, a) : 
+            push(act, actor, a);
+    }
 
 public:
     cyber_stake_api(golos_tester* tester, name code, bool verbose_ = true)
@@ -116,30 +123,41 @@ public:
             ("quantity", quantity)
         );
     }
-
-    action_result setproxylvl(account_name account, symbol_code token_code, uint8_t level, bool mssg = true) {
+    
+    action_result setproxylvl(account_name account, symbol_code token_code, uint8_t level, bool mssg = true, bool self_signed = false) {
         if (mssg && verbose) {
             BOOST_TEST_MESSAGE("--- " << account <<  " sets proxy level");
         }
-        return push(N(setproxylvl), account, args()
+        auto a = args()
             ("account", account)
             ("token_code", token_code)
-            ("level", level)
-        );
+            ("level", level);
+        return push_maybe_msig(N(setproxylvl), account, a, self_signed);
     }
-    action_result setproxyfee(account_name account, symbol_code token_code, int16_t fee) {
-        return push(N(setproxyfee), account, args()
+    action_result setproxyfee(account_name account, symbol_code token_code, int16_t fee, bool self_signed = false) {
+         auto a = args()
             ("account", account)
             ("token_code", token_code)
-            ("fee", fee)
-        );
+            ("fee", fee);
+        return push_maybe_msig(N(setproxyfee), account, a, self_signed);
     }
-    action_result setminstaked(account_name account, symbol_code token_code, int64_t min_own_staked) {
-        return push(N(setminstaked), account, args()
+    action_result setminstaked(account_name account, symbol_code token_code, int64_t min_own_staked, bool self_signed = false) {
+        auto a = args()
             ("account", account)
             ("token_code", token_code)
-            ("min_own_staked", min_own_staked)
-        );
+            ("min_own_staked", min_own_staked);
+        return push_maybe_msig(N(setminstaked), account, a, self_signed);
+    }
+    
+    action_result setkey(account_name account, symbol_code token_code, bool empty, 
+                         std::optional<account_name> signer = std::nullopt, bool self_signed = false) {
+        auto a = args()
+            ("account", account)
+            ("token_code", token_code);
+        if (!empty) {
+            a("signing_key", base_tester::get_public_key(account, "active"));
+        }
+        return push_maybe_msig(N(setkey), signer.value_or(account), a, self_signed);
     }
 
     action_result updatefunds(account_name account, symbol_code token_code) {
@@ -222,6 +240,19 @@ public:
         return variant();
     }
 
+    variant get_candidate(account_name account, symbol token_symbol) {
+        auto all = _tester->get_all_chaindb_rows(name(), 0, N(stake.cand), false);
+        for(auto& v : all) {
+            auto o = mvo(v);
+            if (v["account"].as<account_name>() == account && 
+                v["token_code"].as<symbol_code>() == token_symbol.to_symbol_code()) 
+            {
+                return v;
+            }
+        }
+        return variant();
+    }
+    
     int64_t get_payout(symbol_code token_code, name grantor_name, name recipient_name) {
         return get_amount(token_code, grantor_name, recipient_name, _tester->get_all_chaindb_rows(_code, _code.value, N(provpayout), false));
     }

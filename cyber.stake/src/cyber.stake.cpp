@@ -308,23 +308,17 @@ void stake::withdraw(name account, asset quantity) {
 
 void stake::setproxyfee(name account, symbol_code token_code, int16_t fee) {
     eosio::check(0 <= fee && fee <= config::_100percent, "fee must be between 0% and 100% (0-10000)");
-    staking_exists(token_code);
-    modify_agent(account, token_code, [fee](auto& a) { a.fee = fee; } );
+    modify_agent(account, token_code, [fee](auto& a) { a.fee = fee; });
 }
 
 void stake::setminstaked(name account, symbol_code token_code, int64_t min_own_staked) {
     eosio::check(0 <= min_own_staked, "min_own_staked can't be negative");
-    params params_table(table_owner, table_owner.value);
-    auto min_own_staked_for_election = params_table.get(token_code.raw(), "no staking for token").min_own_staked_for_election;
-    modify_agent(account, token_code, [min_own_staked, min_own_staked_for_election](auto& a) {
-        eosio::check(a.proxy_level || min_own_staked >= min_own_staked_for_election,
-            "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
-        a.min_own_staked = min_own_staked;
-    });
+    modify_agent(account, token_code, [min_own_staked](auto& a) { a.min_own_staked = min_own_staked; });
 }
 
-void stake::setkey(name account, symbol_code token_code, public_key signing_key) {
+void stake::setkey(name account, symbol_code token_code, std::optional<public_key> signing_key = std::nullopt) {
     staking_exists(token_code);
+    auto actual_signing_key = signing_key.value_or(public_key{});
 
     params params_table(table_owner, table_owner.value);
     auto min_own_staked_for_election = params_table.get(token_code.raw(), "no staking for token").min_own_staked_for_election;
@@ -332,12 +326,23 @@ void stake::setkey(name account, symbol_code token_code, public_key signing_key)
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
-    eosio::check(agent->proxy_level || agent->min_own_staked >= min_own_staked_for_election,
-        "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
-
-    modify_candidate(account, token_code, [signing_key](auto& a) {
-        a.signing_key = signing_key;
-        a.enabled = signing_key != public_key{};
+    eosio::check(!agent->proxy_level, account.to_string() + " is not a candidate");
+    
+    if (actual_signing_key != public_key{}) {
+        require_auth(account);
+        agent->check_own_staked(_self, min_own_staked_for_election);
+    }
+    else if (agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
+        require_auth(account);
+    }
+    
+    candidates candidates_table(table_owner, table_owner.value);
+    auto cands_idx = candidates_table.get_index<"bykey"_n>();
+    auto cand = cands_idx.find(std::make_tuple(token_code, account));
+    eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
+    cands_idx.modify(cand, name(), [actual_signing_key](auto& a) {
+        a.signing_key = actual_signing_key;
+        a.enabled = actual_signing_key != public_key{};
     });
 }
 
@@ -350,8 +355,6 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
-    eosio::check(level || agent->min_own_staked >= param.min_own_staked_for_election,
-            "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
     eosio::check(level != agent->proxy_level, "proxy level has not been changed");
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
@@ -389,11 +392,11 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     agents_idx.modify(agent, name(), [&](auto& a) {
         a.proxy_level = level;
     });
-}
-
-void stake::create(
-    symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window, int64_t min_own_staked_for_election
-) {
+    agent->check_own_staked(_self, param.min_own_staked_for_election);
+} 
+ 
+void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window, int64_t min_own_staked_for_election)
+{
     auto token_code = token_symbol.code();
     eosio::check(max_proxies.size(), "no proxy levels are specified");
     eosio::check(max_proxies.size() < std::numeric_limits<uint8_t>::max(), "too many proxy levels");

@@ -222,7 +222,7 @@ void stake::setgrntterms(name grantor_name, name recipient_name, symbol_code tok
             pct_sum += grant_itr->pct;
             ++grant_itr;
         }
-        eosio::check(pct_sum <= config::_100percent, "too high pct value\n");
+        eosio::check(pct_sum <= config::_100percent, "too high pct value");
     }
     if (!agent_found && pct) {
         auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);

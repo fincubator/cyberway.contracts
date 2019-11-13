@@ -110,6 +110,9 @@ public:
     }
 
     struct errors: contract_error_messages {
+        const string system_incorrect_remaining_amount() {
+            return amsg(std::string("SYSTEM: incorrect remaining_amount"));
+        }
         const string incorrect_proxy_levels(uint8_t g, uint8_t a) {
             return amsg("incorrect proxy levels: grantor " + std::to_string(g) + ", agent " + std::to_string(a));
         };
@@ -174,6 +177,9 @@ public:
         const string quantity_bad_precision = amsg("quantity precision mismatch");
         const string quantity_le0           = amsg("quantity must be positive");
         const string dlgvote_no_staking     = amsg("no staking for token");
+        const string too_high_pct() {
+            return amsg(std::string("too high pct value"));
+        }
         const string not_a_candidate(account_name account) {
             return amsg(account.to_string() + " is not a candidate");
         }
@@ -1415,6 +1421,49 @@ BOOST_FIXTURE_TEST_CASE(fuzz_test, cyber_stake_tester) try {
         }
     }
 
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(grants_pct_sum_test, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("delegation/grants_pct_sum_test");
+    
+    std::vector<uint8_t> max_proxies = {30, 1};
+    asset quantity(1000000, token._symbol);
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, quantity + quantity));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, quantity, ""));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _bob, quantity, ""));
+ 
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, 30 * 24 * 60 * 60));
+    BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_whale, token._symbol.to_symbol_code()));
+
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob,   token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_whale, token._symbol.to_symbol_code(), 1));
+    
+    //due to a bug, _whale can set pct_sum > 100%
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _carol, token._symbol.to_symbol_code(), cfg::_100percent / 2 + 1, 0));
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent / 2, 0));
+    //however, when the sum is already incorrect, he cannot add a new proxy
+    BOOST_CHECK_EQUAL(err.too_high_pct(), stake.setgrntterms(_whale, _bob, token._symbol.to_symbol_code(), 1, 0));
+    //he cannot use the bug -- the correctness of the delegated amount is checked by a system assert
+    BOOST_CHECK_EQUAL(err.system_incorrect_remaining_amount(), token.transfer(_whale, _code, quantity));
+    //after correcting the sum, he can stake again
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), 0, 0));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, quantity));
+    produce_block();
+    
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent / 2 + 1, 0));
+    //accounts whose proxy has the incorrect sum also can't stake
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2));
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_bob, _whale, token._symbol.to_symbol_code(), cfg::_100percent, 0));
+    BOOST_CHECK_EQUAL(err.system_incorrect_remaining_amount(), token.transfer(_bob, _code, quantity));
+    //they can disable the distribution of new funds for such proxies
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_bob, _whale, token._symbol.to_symbol_code(), 0, 0));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_bob, _code, quantity));
     produce_block();
 } FC_LOG_AND_RETHROW()
 

@@ -225,6 +225,7 @@ void stake::setgrntterms(name grantor_name, name recipient_name, symbol_code tok
         eosio::check(pct_sum <= config::_100percent, "too high pct value");
     }
     if (!agent_found && pct) {
+        eosio::check(pct_sum <= config::_100percent - pct, "too high pct value");
         auto grantor_as_agent = get_agent_itr(token_code, agents_idx, grantor_name);
         eosio::check(proxies_num < param.max_proxies[grantor_as_agent->proxy_level - 1], "proxy cannot be added");
         update_stake_proxied(token_code, recipient_name);

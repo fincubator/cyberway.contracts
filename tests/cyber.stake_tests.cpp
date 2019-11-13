@@ -110,9 +110,6 @@ public:
     }
 
     struct errors: contract_error_messages {
-        const string system_incorrect_remaining_amount() {
-            return amsg(std::string("SYSTEM: incorrect remaining_amount"));
-        }
         const string incorrect_proxy_levels(uint8_t g, uint8_t a) {
             return amsg("incorrect proxy levels: grantor " + std::to_string(g) + ", agent " + std::to_string(a));
         };
@@ -180,6 +177,9 @@ public:
         const string too_high_pct() {
             return amsg(std::string("too high pct value"));
         }
+        const string incorrect_pct() {
+            return amsg(std::string("pct must be between 0% and 100% (0-10000)"));
+        }
         const string not_a_candidate(account_name account) {
             return amsg(account.to_string() + " is not a candidate");
         }
@@ -229,8 +229,8 @@ BOOST_FIXTURE_TEST_CASE(basic_tests, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _bob,   stake_b, ""));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, stake_c, ""));
 
-    const auto scode = token._symbol.name().c_str();
-    BOOST_CHECK_EQUAL(err.bad_precision, stake.create(_issuer, symbol{8, scode}, max_proxies, 30 * 24 * 60 * 60));
+    const auto scode = token._symbol.name();
+    BOOST_CHECK_EQUAL(err.bad_precision, stake.create(_issuer, symbol{8, scode.c_str()}, max_proxies, 30 * 24 * 60 * 60));
 
     BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, 30 * 24 * 60 * 60));
     BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
@@ -415,8 +415,8 @@ BOOST_FIXTURE_TEST_CASE(delegatevote_args_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("--- delegate vote");
     BOOST_CHECK_EQUAL(err.quantity_le0, stake.delegatevote(_alice, _carol, asset{-1, sym}));
     BOOST_CHECK_EQUAL(err.quantity_le0, stake.delegatevote(_alice, _carol, asset{0, sym}));
-    const auto scode = sym.name().c_str();
-    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.delegatevote(_alice, _carol, asset{1, symbol{8, scode}}));
+    const auto scode = sym.name();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.delegatevote(_alice, _carol, asset{1, symbol{8, scode.c_str()}}));
     BOOST_CHECK_EQUAL(err.dlgvote_no_staking, stake.delegatevote(_alice, _carol, asset{1, symbol{4, "BAD"}}));
     BOOST_CHECK_EQUAL(err.no_agent(), stake.delegatevote(_alice, _carol, stake_u));
 
@@ -675,8 +675,8 @@ BOOST_FIXTURE_TEST_CASE(general_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(err.no_funds(), stake.withdraw(_alice, token.from_amount(stake_amount + 1)));
     BOOST_CHECK_EQUAL(err.must_withdraw_positive(), stake.withdraw(_alice, token.from_amount(-1)));
     BOOST_CHECK_EQUAL(err.must_withdraw_positive(), stake.withdraw(_alice, token.from_amount(0)));
-    const auto scode = token._symbol.name().c_str();
-    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.withdraw(_alice, asset{1, symbol{8, scode}}));
+    const auto scode = token._symbol.name();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.withdraw(_alice, asset{1, symbol{8, scode.c_str()}}));
     BOOST_CHECK_EQUAL(success(), stake.withdraw(_alice, token.from_amount(stake_amount / 2)));
     BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["balance"], stake_amount / 2);
     produce_block();
@@ -754,8 +754,8 @@ BOOST_FIXTURE_TEST_CASE(basic_test, cyber_stake_tester) try {
     int64_t prov_step_0 = 50;
     BOOST_TEST_MESSAGE("alice's resource balance = " << res_balance);
     BOOST_CHECK_EQUAL(res_balance, 0);
-    const auto scode = token._symbol.name().c_str();
-    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.delegateuse(_whale, _alice, asset{1, symbol{8, scode}}));
+    const auto scode = token._symbol.name();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.delegateuse(_whale, _alice, asset{1, symbol{8, scode.c_str()}}));
     BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(prov_step_0)));
     res_balance = bios.get_account_balance(_alice);
     BOOST_TEST_MESSAGE("alice's resource balance = " << res_balance);
@@ -848,8 +848,8 @@ BOOST_FIXTURE_TEST_CASE(recall, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.enable(_issuer, token._symbol));
 
     BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(to_provide)));
-    const auto scode = token._symbol.name().c_str();
-    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.recalluse(_whale, _alice, asset{1, symbol{8, scode}}));
+    const auto scode = token._symbol.name();
+    BOOST_CHECK_EQUAL(err.quantity_bad_precision, stake.recalluse(_whale, _alice, asset{1, symbol{8, scode.c_str()}}));
     BOOST_CHECK_EQUAL(err.not_enough_delegated(), stake.recalluse(_whale, _alice, token.from_amount(to_provide + 1)));
     BOOST_CHECK_EQUAL(success(), stake.recalluse(_whale, _alice, token.from_amount(to_provide)));
     produce_block();
@@ -1424,47 +1424,33 @@ BOOST_FIXTURE_TEST_CASE(fuzz_test, cyber_stake_tester) try {
     produce_block();
 } FC_LOG_AND_RETHROW()
 
-BOOST_FIXTURE_TEST_CASE(grants_pct_sum_test, cyber_stake_tester) try {
-    BOOST_TEST_MESSAGE("delegation/grants_pct_sum_test");
+BOOST_FIXTURE_TEST_CASE(grants_pct_test, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("delegation/grants_pct_test");
     
     std::vector<uint8_t> max_proxies = {30, 1};
     asset quantity(1000000, token._symbol);
-    BOOST_CHECK_EQUAL(success(), token.create(_issuer, quantity + quantity));
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, quantity));
     BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, quantity, ""));
-    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _bob, quantity, ""));
  
     BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, 30 * 24 * 60 * 60));
     BOOST_CHECK_EQUAL(success(), stake.open(_alice, token._symbol.to_symbol_code()));
-    BOOST_CHECK_EQUAL(success(), stake.open(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_carol, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_whale, token._symbol.to_symbol_code()));
 
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
-    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob,   token._symbol.to_symbol_code(), 0));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_carol, token._symbol.to_symbol_code(), 0));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_whale, token._symbol.to_symbol_code(), 1));
     
-    //due to a bug, _whale can set pct_sum > 100%
-    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _carol, token._symbol.to_symbol_code(), cfg::_100percent / 2 + 1, 0));
-    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent / 2, 0));
-    //however, when the sum is already incorrect, he cannot add a new proxy
-    BOOST_CHECK_EQUAL(err.too_high_pct(), stake.setgrntterms(_whale, _bob, token._symbol.to_symbol_code(), 1, 0));
-    //he cannot use the bug -- the correctness of the delegated amount is checked by a system assert
-    BOOST_CHECK_EQUAL(err.system_incorrect_remaining_amount(), token.transfer(_whale, _code, quantity));
-    //after correcting the sum, he can stake again
-    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), 0, 0));
-    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, _code, quantity));
-    produce_block();
+    BOOST_CHECK_EQUAL(err.incorrect_pct(), stake.setgrntterms(_whale, _carol, token._symbol.to_symbol_code(), cfg::_100percent + 1, 0));
+    BOOST_CHECK_EQUAL(err.incorrect_pct(), stake.setgrntterms(_whale, _carol, token._symbol.to_symbol_code(), -1, 0));
     
-    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent / 2 + 1, 0));
-    //accounts whose proxy has the incorrect sum also can't stake
-    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 2));
-    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_bob, _whale, token._symbol.to_symbol_code(), cfg::_100percent, 0));
-    BOOST_CHECK_EQUAL(err.system_incorrect_remaining_amount(), token.transfer(_bob, _code, quantity));
-    //they can disable the distribution of new funds for such proxies
-    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_bob, _whale, token._symbol.to_symbol_code(), 0, 0));
-    BOOST_CHECK_EQUAL(success(), token.transfer(_bob, _code, quantity));
-    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _carol, token._symbol.to_symbol_code(), cfg::_100percent, 0));
+    BOOST_CHECK_EQUAL(err.too_high_pct(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent, 0));
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _carol, token._symbol.to_symbol_code(), cfg::_100percent / 2 + 1, 0));
+    BOOST_CHECK_EQUAL(err.too_high_pct(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent / 2, 0));
+
+    BOOST_CHECK_EQUAL(success(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent / 2 - 1, 0));
+    BOOST_CHECK_EQUAL(err.too_high_pct(), stake.setgrntterms(_whale, _alice, token._symbol.to_symbol_code(), cfg::_100percent / 2, 0));
 } FC_LOG_AND_RETHROW()
 
 BOOST_AUTO_TEST_SUITE_END() // delegation

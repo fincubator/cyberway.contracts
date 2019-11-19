@@ -22,10 +22,22 @@
                 { "type": "int64",         "name": "amount" }
             ]
         },{
+            "name": "producer_struct",
+            "base": "",
+            "fields": [
+                { "type": "name",          "name": "account" }
+            ]
+        },{
             "name": "onblock",
             "base": "",
             "fields": [
                 { "type": "name",          "name": "producer" }
+            ]
+        },{
+            "name": "setactprods",
+            "base": "",
+            "fields": [
+                { "type": "name[]",        "name": "pending_active_producers" }
             ]
         }
     ],
@@ -34,6 +46,9 @@
         {
             "name": "onblock",
             "type": "onblock"
+        },{
+            "name": "setactprods",
+            "type": "setactprods"
         }
     ],
     "tables": [
@@ -50,6 +65,24 @@
         },{
             "name": "balance",
             "type": "balance_struct",
+            "indexes": [
+                { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
+            ]
+        },{
+            "name": "uncbalance",
+            "type": "balance_struct",
+            "indexes": [
+                { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
+            ]
+        },{
+            "name": "obligedprod",
+            "type": "producer_struct",
+            "indexes": [
+                { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
+            ]
+        },{
+            "name": "pendingprod",
+            "type": "producer_struct",
             "indexes": [
                 { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
             ]

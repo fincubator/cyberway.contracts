@@ -32,15 +32,28 @@ void govern::onblock(name producer) {
         
     balances balances_table(_self, _self.value);
     
+    obliged_producers obliged_prods_table(_self, _self.value);
+    unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
+    
     if (producer != config::internal_name && s.block_num != 1) {
+        int64_t just_confirmed_balance = 0;
+        auto u = unconfirmed_balances_table.find(producer.value);
+        if (u != unconfirmed_balances_table.end()) {
+            just_confirmed_balance = u->amount;
+            unconfirmed_balances_table.erase(u);
+        }
+        auto p = obliged_prods_table.find(producer.value);
+        if (p != obliged_prods_table.end()) {
+            obliged_prods_table.erase(p);
+        }
         auto b = balances_table.find(producer.value);
         if (b != balances_table.end()) {
-            balances_table.modify(b, name(), [&](auto& b) { b.amount += block_reward; } );
+            balances_table.modify(b, name(), [&](auto& b) { b.amount += block_reward + just_confirmed_balance; } );
         }
         else {
             balances_table.emplace(_self, [&](auto& b) { b = structures::balance {
                 .account = producer,
-                .amount = block_reward
+                .amount = block_reward + just_confirmed_balance
             };});
         }
     }
@@ -53,6 +66,7 @@ void govern::onblock(name producer) {
     if ((s.block_num >= s.last_producers_num * schedule_period_factor + s.last_propose_block_num) || !s.last_propose_block_num) {
         propose_producers(s);
     }
+    maybe_promote_producers();
 
     state.set(s, _self);
 }
@@ -74,6 +88,11 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
         i = balances_table.erase(i);
     }
     
+    if (rewards.size()) {
+        INLINE_ACTION_SENDER(cyber::stake, reward)(config::stake_name, {config::issuer_name, config::active_name},
+            {std::vector<std::pair<name, int64_t> >(rewards.begin(), rewards.end()), system_token});
+    }
+    
     auto top = stake::get_top(system_token.code(), s.required_producers_num + rewarded_for_votes_limit_displ, 0, false);
     
     auto actual_elected_num = top.size();
@@ -82,25 +101,38 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
         votes_sum += t.votes;
     }
 
-    if (votes_sum) {
-        auto reward_of_elected = safe_pct(s.funds, config::_100percent - config::workers_reward_pct);
-        auto change = reward_of_elected;
-        for (size_t i = 0; i < actual_elected_num; i++) {
-            auto cur_reward = safe_prop(reward_of_elected, top[i].votes, votes_sum);
-            if (cur_reward) {
-                rewards[top[i].account] += cur_reward;
-                change -= cur_reward;
-            }
-        }
-        if (change) {
-            rewards[top[s.block_num % actual_elected_num].account] += change;
-        }
-        s.funds -= reward_of_elected;
+    auto reward_of_elected = safe_pct(s.funds, config::_100percent - config::workers_reward_pct);
+    
+    if (!votes_sum || !reward_of_elected) {
+        return;
     }
     
-    if (rewards.size()) {
-        INLINE_ACTION_SENDER(cyber::stake, reward)(config::stake_name, {config::issuer_name, config::active_name},
-            {std::vector<std::pair<name, int64_t> >(rewards.begin(), rewards.end()), system_token});
+    std::map<name, int64_t> unconfirmed_rewards;
+    auto change = reward_of_elected;
+    for (size_t i = 0; i < actual_elected_num; i++) {
+        auto cur_reward = safe_prop(reward_of_elected, top[i].votes, votes_sum);
+        if (cur_reward) {
+            unconfirmed_rewards[top[i].account] += cur_reward;
+            change -= cur_reward;
+        }
+    }
+    if (change) {
+        unconfirmed_rewards[top[s.block_num % actual_elected_num].account] += change;
+    }
+    s.funds -= reward_of_elected;
+    
+    unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
+    for (auto& r : unconfirmed_rewards) {
+        auto b = unconfirmed_balances_table.find(r.first.value);
+        if (b != unconfirmed_balances_table.end()) {
+            unconfirmed_balances_table.modify(b, name(), [&](auto& b) { b.amount += r.second; } );
+        }
+        else {
+            unconfirmed_balances_table.emplace(_self, [&](auto& b) { b = structures::balance {
+                .account = r.first,
+                .amount = r.second
+            };});
+        }
     }
 }
 
@@ -152,6 +184,45 @@ int64_t govern::get_target_emission_per_block(int64_t supply) const {
     return emission_per_year / config::blocks_per_year;
 }
 
+void govern::setactprods(std::vector<name> pending_active_producers) {
+    require_auth(_self);
+    pending_producers pending_prods_table(_self, _self.value);
+    for (auto i = pending_prods_table.begin(); i != pending_prods_table.end();) {
+        eosio::print("WARNING! govern::setactprods, pending_prods_table was not empty: ", i->account, " erased\n");
+        i = pending_prods_table.erase(i);
+    }
+    
+    for (auto producer : pending_active_producers) {
+        pending_prods_table.emplace(_self, [&](auto& p) { p = structures::producer { .account = producer }; });
+    }
 }
 
-EOSIO_DISPATCH( cyber::govern, (onblock))
+void govern::maybe_promote_producers() {
+    pending_producers pending_prods_table(_self, _self.value);
+    if (pending_prods_table.begin() == pending_prods_table.end()) {
+        return;
+    }
+    obliged_producers obliged_prods_table(_self, _self.value);
+    unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
+    
+    for (auto i = obliged_prods_table.begin(); i != obliged_prods_table.end();) {
+        auto b = unconfirmed_balances_table.find(i->account.value);
+        if (b != unconfirmed_balances_table.end()) {
+            unconfirmed_balances_table.erase(b);
+            //should we send it to the fund?
+            //con: other validators will be financially interested in such failures, while for the chain it is harmful; 
+            //so this is a conflict of interest.
+        }
+        i = obliged_prods_table.erase(i);
+    }
+    
+    for (auto i = pending_prods_table.begin(); i != pending_prods_table.end();) {
+        obliged_prods_table.emplace(_self, [&](auto& p) { p = structures::producer { .account = i->account }; });
+        i = pending_prods_table.erase(i);
+    }
+
+}
+
+}
+
+EOSIO_DISPATCH( cyber::govern, (onblock)(setactprods))

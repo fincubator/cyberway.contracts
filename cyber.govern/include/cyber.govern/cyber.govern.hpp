@@ -34,12 +34,16 @@ struct structures {
         name account;
         uint64_t primary_key()const { return account.value; }
     };
+    
+    struct [[eosio::table]] pending_producers_state {
+        std::vector<name> accounts;
+    };
 };
     using state_singleton = eosio::singleton<"governstate"_n, structures::state_info>;
     using balances = eosio::multi_index<"balance"_n, structures::balance>;
     using unconfirmed_balances = eosio::multi_index<"uncbalance"_n, structures::balance>;
     using obliged_producers = eosio::multi_index<"obligedprod"_n, structures::producer>;
-    using pending_producers = eosio::multi_index<"pendingprod"_n, structures::producer>;
+    using pending_producers = eosio::singleton<"pendingprods"_n, structures::pending_producers_state>;
     
     void maybe_promote_producers();
     void propose_producers(structures::state_info& s);

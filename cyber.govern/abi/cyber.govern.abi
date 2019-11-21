@@ -28,6 +28,13 @@
                 { "type": "name",          "name": "account" }
             ]
         },{
+            "name": "pending_producers_info",
+            "base": "",
+            "fields": [
+                {"type": "uint64",         "name": "id" },
+                { "type": "name[]",        "name": "accounts" }
+            ]
+        },{
             "name": "onblock",
             "base": "",
             "fields": [
@@ -81,10 +88,10 @@
                 { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
             ]
         },{
-            "name": "pendingprod",
-            "type": "producer_struct",
+            "name": "pendingprods",
+            "type": "pending_producers_info",
             "indexes": [
-                { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
+                { "name": "primary", "unique": "true", "orders": [ {"field": "id", "order": "asc"} ] }
             ]
         }
     ],

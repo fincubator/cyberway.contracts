@@ -187,19 +187,18 @@ int64_t govern::get_target_emission_per_block(int64_t supply) const {
 void govern::setactprods(std::vector<name> pending_active_producers) {
     require_auth(_self);
     pending_producers pending_prods_table(_self, _self.value);
-    for (auto i = pending_prods_table.begin(); i != pending_prods_table.end();) {
-        eosio::print("WARNING! govern::setactprods, pending_prods_table was not empty: ", i->account, " erased\n");
-        i = pending_prods_table.erase(i);
+    auto prods = pending_prods_table.get_or_default(structures::pending_producers_state{});
+    if (!prods.accounts.empty()) {
+        eosio::print("WARNING! govern::setactprods, pending_prods_table was not empty\n");
     }
-    
-    for (auto producer : pending_active_producers) {
-        pending_prods_table.emplace(_self, [&](auto& p) { p = structures::producer { .account = producer }; });
-    }
+    prods.accounts = pending_active_producers;
+    pending_prods_table.set(prods, _self);
 }
 
 void govern::maybe_promote_producers() {
     pending_producers pending_prods_table(_self, _self.value);
-    if (pending_prods_table.begin() == pending_prods_table.end()) {
+    auto prods = pending_prods_table.get_or_default(structures::pending_producers_state{});
+    if (prods.accounts.empty()) {
         return;
     }
     obliged_producers obliged_prods_table(_self, _self.value);
@@ -209,18 +208,15 @@ void govern::maybe_promote_producers() {
         auto b = unconfirmed_balances_table.find(i->account.value);
         if (b != unconfirmed_balances_table.end()) {
             unconfirmed_balances_table.erase(b);
-            //should we send it to the fund?
-            //con: other validators will be financially interested in such failures, while for the chain it is harmful; 
-            //so this is a conflict of interest.
         }
         i = obliged_prods_table.erase(i);
     }
     
-    for (auto i = pending_prods_table.begin(); i != pending_prods_table.end();) {
-        obliged_prods_table.emplace(_self, [&](auto& p) { p = structures::producer { .account = i->account }; });
-        i = pending_prods_table.erase(i);
+    for (const auto& acc : prods.accounts) {
+        obliged_prods_table.emplace(_self, [&](auto& p) { p = structures::producer { .account = acc }; });
     }
-
+    prods.accounts.clear();
+    pending_prods_table.set(prods, _self);
 }
 
 }

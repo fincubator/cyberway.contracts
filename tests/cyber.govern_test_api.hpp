@@ -48,18 +48,12 @@ public:
          return _tester->control->head_block_num() - get_block_num();
     }
     
-    signed_block_ptr produce_block(const std::set<account_name>& disabled_producers = std::set<account_name>()) {
-        return (disabled_producers.count(_tester->control->pending_block_state()->header.producer)) ?
-            _tester->produce_block(fc::microseconds(chain::config::block_interval_us * 2)) :
-            _tester->produce_block();
-    }
-    
     uint32_t wait_for_proper_block(uint32_t interval, const std::string& s, uint32_t displ = 0, 
                                    std::map<account_name, uint32_t>* prod_blocks = nullptr, 
                                    const std::set<account_name>& disabled_producers = std::set<account_name>()) {
         auto prev_block = _tester->control->head_block_num();
         while((get_block_num() + displ) % interval != 0) {
-            produce_block(disabled_producers);
+            _tester->produce_block(fc::milliseconds(config::block_interval_ms), 0, disabled_producers);
             if (prod_blocks) {
                 (*prod_blocks)[_tester->control->head_block_producer()]++;
             }
@@ -72,7 +66,7 @@ public:
     uint32_t wait_proposing(const std::set<account_name>& disabled_producers = std::set<account_name>()) {
         auto prev_block = _tester->control->head_block_num();
         while(get_block_num() != get_last_propose_block_num()) {
-            produce_block(disabled_producers);
+            _tester->produce_block(fc::milliseconds(config::block_interval_ms), 0, disabled_producers);
         }
         uint32_t ret = _tester->control->head_block_num() - prev_block;
         BOOST_TEST_MESSAGE("--- waited " << ret << " blocks");
@@ -87,7 +81,7 @@ public:
     signed_block_ptr wait_irreversible_block(const uint32_t lib, const std::set<account_name>& disabled_producers = std::set<account_name>()) {
         signed_block_ptr b;
         while (_tester->control->head_block_state()->dpos_irreversible_blocknum < lib) {
-            b = produce_block(disabled_producers);
+            b = _tester->produce_block(fc::milliseconds(config::block_interval_ms), 0, disabled_producers);
         }
         return b;
     }

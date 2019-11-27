@@ -333,7 +333,7 @@ void stake::setkey(name account, symbol_code token_code, std::optional<public_ke
         require_auth(account);
         agent->check_own_staked(_self, min_own_staked_for_election);
     }
-    else if (agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
+    else if (!has_auth(_self) && agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
         require_auth(account);
     }
     

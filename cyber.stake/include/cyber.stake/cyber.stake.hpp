@@ -317,6 +317,24 @@ public:
         }
         return ret;
     }
+    
+    static inline bool candidate_exists(name account, symbol_code token_code) {
+        staking_exists(token_code);
+
+        agents agents_table(table_owner, table_owner.value);
+        auto agents_idx = agents_table.get_index<"bykey"_n>();
+        auto agent = agents_idx.find(std::make_tuple(token_code, account));
+        
+        candidates candidates_table(table_owner, table_owner.value);
+        auto cands_idx = candidates_table.get_index<"bykey"_n>();
+        auto cand = cands_idx.find(std::make_tuple(token_code, account));
+        
+        if ((agent != agents_idx.end() && !agent->proxy_level) != (cand != cands_idx.end())) {
+            eosio::print("SYSTEM WARNING: candidate ", account, " doesn't exist\n");
+        }
+        
+        return agent != agents_idx.end() && !agent->proxy_level && cand != cands_idx.end();
+    }
 
     using contract::contract;
 

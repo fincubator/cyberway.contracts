@@ -34,6 +34,7 @@ void govern::onblock(name producer) {
     balances balances_table(_self, _self.value);
     
     obliged_producers obliged_prods_table(_self, _self.value);
+    omissions omissions_table(_self, _self.value);
     unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
     
     if (producer != config::internal_name && s.block_num != 1) {
@@ -46,6 +47,10 @@ void govern::onblock(name producer) {
         auto p = obliged_prods_table.find(producer.value);
         if (p != obliged_prods_table.end()) {
             obliged_prods_table.erase(p);
+        }
+        auto o = omissions_table.find(producer.value);
+        if (o != omissions_table.end()) {
+            omissions_table.erase(o);
         }
         auto b = balances_table.find(producer.value);
         if (b != balances_table.end()) {
@@ -203,15 +208,38 @@ void govern::maybe_promote_producers() {
         return;
     }
     obliged_producers obliged_prods_table(_self, _self.value);
+    omissions omissions_table(_self, _self.value);
     unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
     
     for (auto i = obliged_prods_table.begin(); i != obliged_prods_table.end();) {
+        auto o = omissions_table.find(i->account.value);
+        if (o != omissions_table.end()) {
+            omissions_table.modify(o, name(), [&](auto& o) { o.count += 1; } );
+        }
+        else {
+            omissions_table.emplace(_self, [&](auto& o) { o = structures::omission {
+                .account = i->account,
+                .count = 1
+            };});
+        }
+        
         auto b = unconfirmed_balances_table.find(i->account.value);
         if (b != unconfirmed_balances_table.end()) {
             eosio::event(_self, "burnreward"_n, *b).send();
             unconfirmed_balances_table.erase(b);
         }
         i = obliged_prods_table.erase(i);
+    }
+    symbol_code token_code = system_token.code();
+    
+    auto omissions_idx = omissions_table.get_index<"bycount"_n>();
+    auto omission_itr = omissions_idx.lower_bound(std::numeric_limits<decltype(structures::omission::count)>::max());
+    if (omission_itr != omissions_idx.end() && omission_itr->count >= config::omission_limit) {
+        if (cyber::stake::candidate_exists(omission_itr->account, token_code)) {
+            INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::stake_name, config::active_name},
+                {omission_itr->account, token_code, public_key{}});
+        }
+        omissions_idx.erase(omission_itr);
     }
     
     for (const auto& acc : prods.accounts) {

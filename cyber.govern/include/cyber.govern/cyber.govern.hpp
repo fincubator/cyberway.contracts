@@ -38,12 +38,23 @@ struct structures {
     struct [[eosio::table]] pending_producers_state {
         std::vector<name> accounts;
     };
+    
+    struct [[eosio::table]] omission {
+        name account;
+        uint16_t count;
+        uint64_t primary_key()const { return account.value; }
+        uint16_t by_count()const { return count; }
+    };
 };
     using state_singleton = eosio::singleton<"governstate"_n, structures::state_info>;
     using balances = eosio::multi_index<"balance"_n, structures::balance>;
     using unconfirmed_balances = eosio::multi_index<"uncbalance"_n, structures::balance>;
     using obliged_producers = eosio::multi_index<"obligedprod"_n, structures::producer>;
     using pending_producers = eosio::singleton<"pendingprods"_n, structures::pending_producers_state>;
+    
+    using omission_id_index = eosio::indexed_by<"omissionid"_n, eosio::const_mem_fun<structures::omission, uint64_t, &structures::omission::primary_key> >;
+    using omission_count_index = eosio::indexed_by<"bycount"_n, eosio::const_mem_fun<structures::omission, uint16_t, &structures::omission::by_count> >;
+    using omissions = eosio::multi_index<"omission"_n, structures::omission, omission_id_index, omission_count_index>;
     
     void maybe_promote_producers();
     void propose_producers(structures::state_info& s);

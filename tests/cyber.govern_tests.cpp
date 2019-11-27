@@ -141,6 +141,8 @@ public:
 
     struct errors: contract_error_messages {
         const string temp_unavailable = amsg("action is temporarily unavailable");
+        const string incorrect_shift = amsg("incorrect shift");
+        const string shift_not_changed = amsg("the shift has not changed");
     } err;
 };  
 
@@ -697,9 +699,9 @@ BOOST_FIXTURE_TEST_CASE(reserve_freq_test, cyber_govern_tester) try {
 
 BOOST_AUTO_TEST_SUITE_END() // election
 
-BOOST_AUTO_TEST_SUITE(increase_producers_num)
+BOOST_AUTO_TEST_SUITE(schedule_size)
 BOOST_FIXTURE_TEST_CASE(not_enough_producers_test, cyber_govern_tester) try {
-    BOOST_TEST_MESSAGE("increase_producers_num/not_enough_producers_test");
+    BOOST_TEST_MESSAGE("schedule_size/not_enough_producers_test");
     deploy_sys_contracts();
     
     std::vector<account_name> cur_pbs;
@@ -716,56 +718,66 @@ BOOST_FIXTURE_TEST_CASE(not_enough_producers_test, cyber_govern_tester) try {
 
 } FC_LOG_AND_RETHROW()
 
-BOOST_FIXTURE_TEST_CASE(blocking_votes_test, cyber_govern_tester) try {
-    BOOST_TEST_MESSAGE("increase_producers_num/blocking_votes_test");
+BOOST_FIXTURE_TEST_CASE(set_shift_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("schedule_size/set_shift_test");
     deploy_sys_contracts();
     
-    int64_t votes_top = 0;
-    double overlay = 0.05;
-    int64_t votes_displ = 3;
-    int u = 0;
-    int64_t default_votes = 1000;
-    for (; u < cfg::min_producers_num; u++) {
-        auto user = user_name(u);
-        create_accounts({user});
-        BOOST_CHECK_EQUAL(success(), stake.register_candidate(user, token._symbol.to_symbol_code()));
-        BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, asset(default_votes, token._symbol), ""));
-        BOOST_CHECK_EQUAL(success(), token.transfer(user, stake_account_name, asset(default_votes, token._symbol)));
-        votes_top += default_votes;
-    }
+    reg_candidates(cfg::min_producers_num + 2, 1000);
     govern.wait_schedule_activation();
-    size_t cur_pbs_num = cfg::min_producers_num;
-    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_pbs_num);
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num);
     
-    for (size_t i = 0; i < 3; i++) {
-        BOOST_TEST_MESSAGE("-- waiting for the next increase (" << cur_pbs_num + 1 << ")");
-        produce_block(fc::seconds((1.0 + overlay) * cfg::schedule_increase_min_delay));
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 1);
     
-        auto votes_wo_reserve = votes_top - (default_votes * cfg::active_reserve_producers_num);
-        int64_t votes_total_target = static_cast<eosio::chain::int128_t>(votes_wo_reserve) * cfg::_100percent / cfg::schedule_increase_blocking_votes_pct;
-        auto cur_votes = (votes_total_target - votes_top) - votes_displ;
-        
-        auto user = user_name(u++);
-        create_accounts({user});
-        BOOST_CHECK_EQUAL(success(), stake.register_candidate(user, token._symbol.to_symbol_code()));
-        BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, asset(cur_votes, token._symbol), ""));
-        BOOST_CHECK_EQUAL(success(), token.transfer(user, stake_account_name, asset(cur_votes, token._symbol)));
-        govern.wait_schedule_activation();
-        BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_pbs_num);
-        
-        auto cur_votes_add = votes_displ * 2;
-        BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, asset(cur_votes_add, token._symbol), ""));
-        BOOST_CHECK_EQUAL(success(), token.transfer(user, stake_account_name, asset(cur_votes_add, token._symbol)));
-        govern.wait_schedule_activation();
-        cur_pbs_num++;
-        BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_pbs_num);
-        votes_top += cur_votes + cur_votes_add;
-    }
+    BOOST_CHECK_EQUAL(err.incorrect_shift, govern.set_shift(-2));
+    BOOST_CHECK_EQUAL(err.incorrect_shift, govern.set_shift(2));
+    BOOST_CHECK_EQUAL(err.shift_not_changed, govern.set_shift(1));
+    BOOST_CHECK_EQUAL(success(), govern.set_shift(0));
+    
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 1);
+    
+    BOOST_CHECK_EQUAL(success(), govern.set_shift(-1));
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num);
+    
+    BOOST_CHECK_EQUAL(success(), govern.set_shift(1));
+    
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 1);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 2);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 2);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 2);
+    
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob, token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 4);
 
+    produce_block();
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
-    BOOST_TEST_MESSAGE("increase_producers_num/waiting_test");
+    BOOST_TEST_MESSAGE("schedule_size/waiting_test");
     deploy_sys_contracts();
     int64_t votes_per_user = 1000;
     double overlay = 0.3;
@@ -786,7 +798,7 @@ BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
     
     for (int i = cur_active_bps_num; i < cfg::max_producers_num + 2; i++) {
         BOOST_TEST_MESSAGE("-- waiting for the next increase (" << cur_active_bps_num + 1 << ")");
-        produce_block(fc::seconds((1.0 - overlay) * cfg::schedule_increase_min_delay));
+        produce_block(fc::seconds((1.0 - overlay) * cfg::schedule_resize_min_delay));
         
         int64_t bps_target_num = (static_cast<eosio::chain::int128_t>(cur_active_bps_num) * cfg::_100percent / cfg::schedule_increase_blocking_votes_pct) + 1;
         for (int j = cur_pbs_num; j < bps_target_num; j++) {
@@ -801,7 +813,7 @@ BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
         govern.wait_schedule_activation();
         
         BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_active_bps_num);
-        produce_block(fc::seconds(overlay * 2.0 * cfg::schedule_increase_min_delay));
+        produce_block(fc::seconds(overlay * 2.0 * cfg::schedule_resize_min_delay));
         govern.wait_schedule_activation();
         if (cur_active_bps_num < cfg::max_producers_num) {
             cur_active_bps_num++;
@@ -811,7 +823,7 @@ BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
     
 } FC_LOG_AND_RETHROW()
 
-BOOST_AUTO_TEST_SUITE_END() // increase_producers_num
+BOOST_AUTO_TEST_SUITE_END() // schedule_size
 
 BOOST_AUTO_TEST_SUITE_END() // cyber_govern_tests
 

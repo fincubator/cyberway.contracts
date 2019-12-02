@@ -3,6 +3,7 @@
 #include <cyber.govern/cyber.govern.hpp>
 #include <eosio/privileged.hpp>
 #include <common/util.hpp>
+#include <eosio/event.hpp>
 
 using namespace cyber::config;
 
@@ -207,6 +208,7 @@ void govern::maybe_promote_producers() {
     for (auto i = obliged_prods_table.begin(); i != obliged_prods_table.end();) {
         auto b = unconfirmed_balances_table.find(i->account.value);
         if (b != unconfirmed_balances_table.end()) {
+            eosio::event(_self, "burnreward"_n, *b).send();
             unconfirmed_balances_table.erase(b);
         }
         i = obliged_prods_table.erase(i);

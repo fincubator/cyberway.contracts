@@ -49,6 +49,12 @@
         }
     ],
     "types": [],
+    "events": [
+        {
+            "name":"burnreward",
+            "type":"balance_struct"
+        }
+    ],
     "actions": [
         {
             "name": "onblock",

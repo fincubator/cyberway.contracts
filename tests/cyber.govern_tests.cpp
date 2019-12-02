@@ -2,11 +2,13 @@
 #include "cyber.token_test_api.hpp"
 #include "cyber.stake_test_api.hpp"
 #include "cyber.govern_test_api.hpp"
+#include "cyber.bios_test_api.hpp"
 #include "contracts.hpp"
 #include "../cyber.stake/include/cyber.stake/config.hpp"
 #include "../cyber.bios/include/cyber.bios/config.hpp"
 #include <eosio/chain/block_header_state.hpp>
 #include <eosio/chain/int_arithmetic.hpp>
+#include <eosio/chain/authorization_manager.hpp>
 #include <eosio/chain/random.hpp>
 
 namespace cfg = cyber::config;
@@ -23,6 +25,7 @@ protected:
     cyber_token_api token;
     cyber_stake_api stake;
     cyber_govern_api govern;
+    cyber_bios_api bios;
 
     time_point_sec head_block_time() { return time_point_sec(control->head_block_time().time_since_epoch().to_seconds()); };
  
@@ -32,6 +35,7 @@ public:
         , token({this, cfg::token_name, cfg::system_token})
         , stake({this, stake_account_name})
         , govern({this, govern_account_name})
+        , bios({this, config::system_account_name})
     { 
         create_accounts({_alice, _bob, _carol, _whale,
             cfg::token_name, cfg::worker_name});
@@ -138,9 +142,23 @@ public:
         }
         return ret;
     }
+    
+    std::optional<weight_type> get_prod_weight(account_name producer) {
+        const auto& active_perm = control->get_authorization_manager().get_permission({config::producers_account_name, config::active_name});
+        permission_level perm_level{producer, config::active_name};
+        auto itr = std::find_if(active_perm.auth.accounts.begin(), active_perm.auth.accounts.end(), 
+            [perm_level](const permission_level_weight& w) { return w.permission == perm_level; });
+        return itr != active_perm.auth.accounts.end() ? std::optional<weight_type>(itr->weight) : std::nullopt;
+    }
 
     struct errors: contract_error_messages {
         const string temp_unavailable = amsg("action is temporarily unavailable");
+        static bool no_signatures(const std::string& arg) {
+            return arg.find("does not have signatures") != std::string::npos;
+        }
+        static bool irrelevant_signatures(const std::string& arg) {
+            return arg.find("bears irrelevant signatures") != std::string::npos;
+        }
         const string incorrect_shift = amsg("incorrect shift");
         const string shift_not_changed = amsg("the shift has not changed");
     } err;
@@ -468,6 +486,197 @@ BOOST_FIXTURE_TEST_CASE(unreg_sleeping_producer, cyber_govern_tester) try {
 } FC_LOG_AND_RETHROW()
 
 BOOST_AUTO_TEST_SUITE_END() // reset_key
+
+BOOST_AUTO_TEST_SUITE(auth)
+BOOST_FIXTURE_TEST_CASE(permissions_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("auth/permissions_test");
+    int64_t init_supply = 50000000000000000;
+    int64_t pct = init_supply / 100;
+    deploy_sys_contracts(init_supply * 2);
+    
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(init_supply, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_whale, token._symbol.to_symbol_code()));
+
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(51 * pct, token._symbol), "alice"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(15 * pct, token._symbol), "bob"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(33 * pct, token._symbol), "carol"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(1  * pct, token._symbol), ""));
+    produce_block();
+    govern.wait_schedule_activation();
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob, _carol, _whale}, config::producers_account_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob, _whale}, config::producers_account_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _carol}, config::producers_account_name));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_bob, _whale}, config::producers_account_name)));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_bob, _carol, _whale}, config::producers_account_name)));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_alice, _whale}, config::producers_account_name)));
+    
+    produce_block();
+    BOOST_CHECK(err.no_signatures(
+        bios.link_auth({_alice, _whale}, config::producers_account_name, config::system_account_name, config::minority_producers_permission_name, N(reqauth))));
+    BOOST_CHECK_EQUAL(success(),
+        bios.link_auth({_alice, _carol}, config::producers_account_name, config::system_account_name, config::minority_producers_permission_name, N(reqauth)));
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob, _carol, _whale}, config::producers_account_name, config::minority_producers_permission_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice}, config::producers_account_name, config::minority_producers_permission_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_carol, _whale}, config::producers_account_name, config::minority_producers_permission_name));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_carol}, config::producers_account_name, config::minority_producers_permission_name)));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_bob, _whale}, config::producers_account_name, config::minority_producers_permission_name)));
+    
+    produce_block();
+    BOOST_CHECK_EQUAL(success(),
+        bios.link_auth({_alice, _carol}, config::producers_account_name, config::system_account_name, config::majority_producers_permission_name, N(reqauth)));
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice}, config::producers_account_name, config::majority_producers_permission_name));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_bob, _carol, _whale}, config::producers_account_name, config::majority_producers_permission_name)));
+    
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_carol}, config::producers_account_name, config::majority_producers_permission_name)));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_carol}, config::producers_account_name, config::majority_producers_permission_name));
+
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(zero_weight_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("auth/zero_weight_test");
+    int64_t init_supply = std::numeric_limits<weight_type>::max() - 1;
+    deploy_sys_contracts(init_supply * 2);
+    
+    std::vector<account_name> users{_alice, _bob, _carol, _whale};
+    std::sort(users.begin(), users.end());
+    
+    for (int u = 0; u < 4; u++) {
+        BOOST_CHECK_EQUAL(success(), stake.register_candidate(users[u], token._symbol.to_symbol_code()));
+    }
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, users[1], asset(3, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), token.transfer(users[1], stake_account_name, asset(3, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, users[2], asset(init_supply / 2, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), token.transfer(users[2], stake_account_name, asset(init_supply / 2, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, users[3], asset(init_supply / 2, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), token.transfer(users[3], stake_account_name, asset(init_supply / 2, token._symbol)));
+    
+    produce_block();
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(success(),
+        bios.link_auth({users[2], users[3]}, config::producers_account_name, config::system_account_name, config::majority_producers_permission_name, N(reqauth)));
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({users[2], users[3]}, config::producers_account_name, config::majority_producers_permission_name, false));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({users[1], users[3]}, config::producers_account_name, config::majority_producers_permission_name, false));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({users[1], users[2]}, config::producers_account_name, config::majority_producers_permission_name, false));
+    
+    //irrelevant_signatures, due to sorting by weight
+    BOOST_CHECK(err.irrelevant_signatures(
+        bios.req_auth({users[1], users[2], users[3]}, config::producers_account_name, config::majority_producers_permission_name, false)));
+    BOOST_CHECK(err.irrelevant_signatures(
+        bios.req_auth({users[0], users[1], users[2]}, config::producers_account_name, config::majority_producers_permission_name, false)));
+    BOOST_CHECK(err.irrelevant_signatures(
+        bios.req_auth({users[0], users[1], users[2], users[3]}, config::producers_account_name, config::majority_producers_permission_name, false)));
+    
+    BOOST_CHECK_EQUAL(0, *get_prod_weight(_alice));
+    BOOST_CHECK(!get_prod_weight(N(cheshirecat)).has_value());
+    BOOST_CHECK(*get_prod_weight(_bob) > 0);
+    BOOST_CHECK(*get_prod_weight(_carol) > 0);
+    BOOST_CHECK_EQUAL(*get_prod_weight(_carol), *get_prod_weight(_whale));
+
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(few_votes_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("auth/few_votes_test");
+    int64_t init_supply = 100;
+    deploy_sys_contracts(init_supply * 2);
+    
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(init_supply, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(66, token._symbol), "alice"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(1, token._symbol), "bob"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(33, token._symbol), "carol"));
+    produce_block();
+    govern.wait_schedule_activation();
+    
+    BOOST_CHECK_EQUAL(66, *get_prod_weight(_alice));
+    BOOST_CHECK_EQUAL(1, *get_prod_weight(_bob));
+    BOOST_CHECK_EQUAL(33, *get_prod_weight(_carol));
+    BOOST_CHECK(!get_prod_weight(_whale).has_value());
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob}, config::producers_account_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _carol}, config::producers_account_name));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_bob, _carol}, config::producers_account_name)));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_alice}, config::producers_account_name)));
+    
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1));
+    BOOST_CHECK_EQUAL(66, *get_prod_weight(_alice));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_carol}, config::producers_account_name)));
+    produce_block();
+    BOOST_CHECK_EQUAL(0, *get_prod_weight(_alice));
+    BOOST_CHECK_EQUAL(1, *get_prod_weight(_bob));
+    BOOST_CHECK_EQUAL(33, *get_prod_weight(_carol));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_carol}, config::producers_account_name));
+
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(no_votes_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("auth/no_votes_test");
+    deploy_sys_contracts();
+    
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_whale, token._symbol.to_symbol_code()));
+    produce_block();
+    BOOST_CHECK(!get_prod_weight(_alice).has_value());
+    govern.wait_schedule_activation();
+    BOOST_CHECK(*get_prod_weight(_alice) > 0);
+    BOOST_CHECK(*get_prod_weight(_alice) == *get_prod_weight(_bob));
+    BOOST_CHECK(*get_prod_weight(_bob) == *get_prod_weight(_carol));
+    BOOST_CHECK(*get_prod_weight(_carol) == *get_prod_weight(_whale));
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob, _carol, _whale}, config::producers_account_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _carol, _whale}, config::producers_account_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_bob, _carol, _whale}, config::producers_account_name));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_bob, _carol}, config::producers_account_name)));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_alice, _carol}, config::producers_account_name)));
+    
+    produce_block();
+    BOOST_CHECK_EQUAL(success(),
+        bios.link_auth({_alice, _bob, _carol}, config::producers_account_name, config::system_account_name, config::minority_producers_permission_name, N(reqauth)));
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob, _carol, _whale}, config::producers_account_name, config::minority_producers_permission_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob, _carol}, config::producers_account_name, config::minority_producers_permission_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob}, config::producers_account_name, config::minority_producers_permission_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _whale}, config::producers_account_name, config::minority_producers_permission_name));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_carol}, config::producers_account_name, config::minority_producers_permission_name)));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_whale}, config::producers_account_name, config::minority_producers_permission_name)));
+    
+    produce_block();
+    BOOST_CHECK_EQUAL(success(),
+        bios.link_auth({_alice, _bob, _carol}, config::producers_account_name, config::system_account_name, config::majority_producers_permission_name, N(reqauth)));
+    
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _bob, _carol, _whale}, config::producers_account_name, config::majority_producers_permission_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _carol, _whale}, config::producers_account_name, config::majority_producers_permission_name));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_bob, _carol, _whale}, config::producers_account_name, config::majority_producers_permission_name));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_bob, _carol}, config::producers_account_name, config::majority_producers_permission_name)));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_alice, _carol}, config::producers_account_name, config::majority_producers_permission_name)));
+    
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 1));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+    produce_block();
+    //it has no effect when there are no votes:
+    BOOST_CHECK(*get_prod_weight(_alice) > 0);
+    BOOST_CHECK(*get_prod_weight(_alice) == *get_prod_weight(_bob));
+    BOOST_CHECK(*get_prod_weight(_bob) == *get_prod_weight(_carol));
+    BOOST_CHECK(*get_prod_weight(_carol) == *get_prod_weight(_whale));
+    BOOST_CHECK(err.no_signatures(bios.req_auth({_carol, _whale}, config::producers_account_name, config::majority_producers_permission_name)));
+    BOOST_CHECK_EQUAL(success(), bios.req_auth({_alice, _carol, _whale}, config::producers_account_name, config::majority_producers_permission_name));
+
+} FC_LOG_AND_RETHROW()
+
+BOOST_AUTO_TEST_SUITE_END() // auth
 
 BOOST_AUTO_TEST_SUITE(emission)
 BOOST_FIXTURE_TEST_CASE(no_staked_test, cyber_govern_tester) try {

@@ -114,6 +114,27 @@ public:
         params.min_transaction_cpu_usage = arg;
         return push(N(setparams), _code, args()("params", params));
     }
+    
+    action_result req_auth(std::vector<account_name> signers, account_name from, permission_name permission = config::active_name, bool add_signers_permissions = true) {
+        std::vector<permission_level> perms;
+        if (add_signers_permissions) {
+            for (const auto& a : signers) {
+                perms.emplace_back(permission_level{a, config::active_name}); //“Irrelevant signatures” otherwise
+            }
+        }
+        perms.emplace_back(permission_level{from, permission});
+        return push_msig(N(reqauth), perms, signers, args()("from", from));
+    }
+    
+    action_result link_auth(std::vector<account_name> signers, account_name account, account_name code,  permission_name req, action_name type) {
+        signed_transaction trx;
+        trx.actions.emplace_back(vector<permission_level>{{account, config::active_name}}, linkauth(account, code, type, req));
+        _tester->set_transaction_headers(trx);
+        for (const auto& a : signers) {
+            trx.sign(_tester->get_private_key(a, "active"), _tester->control->get_chain_id());
+        }
+        return _tester->push_tx(std::move(trx));
+    }
 };
 
 }} // eosio::testing

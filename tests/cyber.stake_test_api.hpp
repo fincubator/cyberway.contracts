@@ -12,13 +12,13 @@ struct cyber_stake_api: base_contract_api {
     bool verbose;
     uint32_t billed_cpu_time_us = base_tester::DEFAULT_BILLED_CPU_TIME_US;
     uint64_t billed_ram_bytes = base_tester::DEFAULT_BILLED_RAM_BYTES;
-    
+
     int64_t get_amount(symbol_code token_code, name grantor_name, name recipient_name, const std::vector<fc::variant>& all) {
         for(auto& v : all) {
             auto o = mvo(v);
             if (v["token_code"].as<symbol_code>() == token_code &&
                 v["grantor_name"].as<account_name>() == grantor_name &&
-                v["recipient_name"].as<account_name>() == recipient_name) 
+                v["recipient_name"].as<account_name>() == recipient_name)
             {
                 auto ret = v["amount"].as<int64_t>();
                 BOOST_REQUIRE(ret > 0);
@@ -27,18 +27,25 @@ struct cyber_stake_api: base_contract_api {
         }
         return 0;
     }
+    
+    action_result push_maybe_msig(account_name act, account_name actor, mvo a, bool self_signed) {
+        return self_signed ?
+            push_msig(act, {{actor, config::active_name}, {_code, config::active_name}}, 
+                {actor, _code}, a) : 
+            push(act, actor, a);
+    }
 
 public:
     cyber_stake_api(golos_tester* tester, name code, bool verbose_ = true)
     :   base_contract_api(tester, code), verbose(verbose_){}
-    
+
     void set_verbose(bool verbose_) { verbose = verbose_; };
 
     ////actions
     action_result create(account_name issuer, symbol token_symbol,
             std::vector<uint8_t> max_proxies, int64_t depriving_window,
             int64_t min_own_staked_for_election = 0) {
-        
+
         return push(N(create), issuer, args()
             ("token_symbol", token_symbol)
             ("max_proxies", max_proxies)
@@ -46,24 +53,28 @@ public:
             ("min_own_staked_for_election", min_own_staked_for_election)
         );
     }
-    
+
     action_result open(account_name owner, symbol_code token_code, account_name ram_payer = account_name(0)) {
-        return ram_payer ? 
-            push(N(open), ram_payer, args()("owner", owner)("token_code", token_code)("ram_payer", ram_payer)) : 
+        return ram_payer ?
+            push(N(open), ram_payer, args()("owner", owner)("token_code", token_code)("ram_payer", ram_payer)) :
             push(N(open), owner,     args()("owner", owner)("token_code", token_code));
     }
-    
-    action_result enable(account_name issuer, symbol token_symbol) {
+
+    action_result enable(account_name issuer, symbol_code token_code) {
         return push(N(enable), issuer, args()
-            ("token_symbol", token_symbol)
+            ("token_code", token_code)
         );
     }
-    
+    action_result enable(account_name issuer, symbol token_symbol) {
+        // Note: deprecated, should be removed
+        return enable(issuer, token_symbol.to_symbol_code());
+    }
+
     void disable(symbol_code token_code) {
         auto& db = _tester->control->chaindb();
         db.modify(*db.find<stake_stat_object>(token_code.value), [&]( auto& s) { s.enabled = false; });
     }
-    
+
     action_result delegatevote(account_name grantor_name, account_name recipient_name, asset quantity) {
         if (verbose) {
             BOOST_TEST_MESSAGE("--- " << grantor_name <<  " delegates " << quantity <<  " to " << recipient_name);
@@ -74,7 +85,7 @@ public:
             ("quantity", quantity)
         );
     }
-    
+
     action_result setgrntterms(account_name grantor_name, account_name recipient_name, symbol_code token_code,
         int16_t pct, int16_t break_fee = cyber::config::_100percent, int64_t break_min_own_staked = 0) {
         if (verbose) {
@@ -86,13 +97,13 @@ public:
             ("token_code", token_code)
             ("pct", pct)
             ("break_fee", break_fee)
-            ("break_min_own_staked", break_min_own_staked)        
+            ("break_min_own_staked", break_min_own_staked)
         );
     }
-    
+
     action_result recallvote(account_name grantor_name, account_name recipient_name, symbol_code token_code, int16_t pct) {
         if (verbose) {
-            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " recalls " << pct 
+            BOOST_TEST_MESSAGE("--- " << grantor_name <<  " recalls " << pct
                 <<  "(" << token_code << ")" << " from " << recipient_name);
         }
         return push(N(recallvote), grantor_name, args()
@@ -102,7 +113,7 @@ public:
             ("pct", pct)
         );
     }
-    
+
     action_result withdraw(account_name account, asset quantity) {
         if (verbose) {
             BOOST_TEST_MESSAGE("--- " << account <<  " withdraws " << quantity);
@@ -113,29 +124,40 @@ public:
         );
     }
     
-    action_result setproxylvl(account_name account, symbol_code token_code, uint8_t level, bool mssg = true) {
+    action_result setproxylvl(account_name account, symbol_code token_code, uint8_t level, bool mssg = true, bool self_signed = false) {
         if (mssg && verbose) {
             BOOST_TEST_MESSAGE("--- " << account <<  " sets proxy level");
         }
-        return push(N(setproxylvl), account, args()
+        auto a = args()
             ("account", account)
             ("token_code", token_code)
-            ("level", level)
-        );
+            ("level", level);
+        return push_maybe_msig(N(setproxylvl), account, a, self_signed);
     }
-    action_result setproxyfee(account_name account, symbol_code token_code, int16_t fee) {
-        return push(N(setproxyfee), account, args()
+    action_result setproxyfee(account_name account, symbol_code token_code, int16_t fee, bool self_signed = false) {
+         auto a = args()
             ("account", account)
             ("token_code", token_code)
-            ("fee", fee)
-        );
+            ("fee", fee);
+        return push_maybe_msig(N(setproxyfee), account, a, self_signed);
     }
-    action_result setminstaked(account_name account, symbol_code token_code, int64_t min_own_staked) {
-        return push(N(setminstaked), account, args()
+    action_result setminstaked(account_name account, symbol_code token_code, int64_t min_own_staked, bool self_signed = false) {
+        auto a = args()
             ("account", account)
             ("token_code", token_code)
-            ("min_own_staked", min_own_staked)
-        );
+            ("min_own_staked", min_own_staked);
+        return push_maybe_msig(N(setminstaked), account, a, self_signed);
+    }
+    
+    action_result setkey(account_name account, symbol_code token_code, bool empty, 
+                         std::optional<account_name> signer = std::nullopt, bool self_signed = false) {
+        auto a = args()
+            ("account", account)
+            ("token_code", token_code);
+        if (!empty) {
+            a("signing_key", base_tester::get_public_key(account, "active"));
+        }
+        return push_maybe_msig(N(setkey), signer.value_or(account), a, self_signed);
     }
 
     action_result updatefunds(account_name account, symbol_code token_code) {
@@ -144,14 +166,14 @@ public:
             ("token_code", token_code)
         );
     }
-    
+
     action_result reward(account_name issuer, account_name account, asset quantity) {
         return push(N(reward), issuer, args()
             ("rewards", std::vector<std::pair<account_name, int64_t> >{std::make_pair(account, quantity.get_amount())})
             ("sym", quantity.get_symbol())
         );
     }
-    
+
     action_result delegateuse(account_name grantor_name, account_name recipient_name, asset quantity) {
         if (verbose) {
             BOOST_TEST_MESSAGE("--- " << grantor_name <<  " provides " << quantity << " to " << recipient_name);
@@ -162,7 +184,7 @@ public:
             ("quantity", quantity)
         );
     }
-    
+
     action_result recalluse(account_name grantor_name, account_name recipient_name, asset quantity) {
         if (verbose) {
             BOOST_TEST_MESSAGE("--- " << grantor_name <<  " deprives " << recipient_name << " of " << quantity);
@@ -173,7 +195,7 @@ public:
             ("quantity", quantity)
         );
     }
-    
+
     action_result claim(account_name grantor_name, account_name recipient_name, symbol_code token_code) {
         return push(N(claim), grantor_name, args()
             ("grantor_name", grantor_name)
@@ -206,8 +228,8 @@ public:
         auto all = _tester->get_all_chaindb_rows(name(), 0, N(stake.agent), false);
         for(auto& v : all) {
             auto o = mvo(v);
-            if (v["account"].as<account_name>() == account && 
-                v["token_code"].as<symbol_code>() == token_symbol.to_symbol_code()) 
+            if (v["account"].as<account_name>() == account &&
+                v["token_code"].as<symbol_code>() == token_symbol.to_symbol_code())
             {
                 o.erase("id");
                 o.erase("signing_key");
@@ -217,18 +239,31 @@ public:
         }
         return variant();
     }
+
+    variant get_candidate(account_name account, symbol token_symbol) {
+        auto all = _tester->get_all_chaindb_rows(name(), 0, N(stake.cand), false);
+        for(auto& v : all) {
+            auto o = mvo(v);
+            if (v["account"].as<account_name>() == account && 
+                v["token_code"].as<symbol_code>() == token_symbol.to_symbol_code()) 
+            {
+                return v;
+            }
+        }
+        return variant();
+    }
     
     int64_t get_payout(symbol_code token_code, name grantor_name, name recipient_name) {
         return get_amount(token_code, grantor_name, recipient_name, _tester->get_all_chaindb_rows(_code, _code.value, N(provpayout), false));
     }
-    
+
     int64_t get_prov(symbol_code token_code, name grantor_name, name recipient_name) {
         return get_amount(token_code, grantor_name, recipient_name, _tester->get_all_chaindb_rows(_code, _code.value, N(provision), false));
     }
 
     variant make_agent(
-            account_name account, symbol token_symbol, 
-            uint8_t proxy_level, 
+            account_name account, symbol token_symbol,
+            uint8_t proxy_level,
             time_point_sec last_proxied_update,
             int64_t balance = 0,
             int64_t proxied = 0,
@@ -253,7 +288,7 @@ public:
             ("provided", provided)
             ("received", received);
     }
-    
+
     int64_t get_total_votes(symbol_code token_code) {
         int64_t ret = 0;
         auto all = _tester->get_all_chaindb_rows(name(), 0, N(stake.cand), false);
@@ -264,12 +299,12 @@ public:
         }
         return ret;
     }
-    
+
     variant get_stats(symbol token_symbol) {
         auto all = _tester->get_all_chaindb_rows(name(), 0, N(stake.stat), false);
         for(auto& v : all) {
             auto o = mvo(v);
-            if (v["token_code"].as<symbol_code>() == token_symbol.to_symbol_code()) 
+            if (v["token_code"].as<symbol_code>() == token_symbol.to_symbol_code())
             {
                 o.erase("id");
                 v = o;
@@ -278,7 +313,7 @@ public:
         }
         return variant();
     }
-    
+
     variant make_stats(symbol token_symbol, int64_t total_staked, int64_t total_votes, bool enabled = false, time_point_sec last_reward = time_point_sec()) {
         return mvo()
             ("token_code", token_symbol.to_symbol_code())

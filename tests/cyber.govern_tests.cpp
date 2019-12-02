@@ -7,6 +7,7 @@
 #include "../cyber.bios/include/cyber.bios/config.hpp"
 #include <eosio/chain/block_header_state.hpp>
 #include <eosio/chain/int_arithmetic.hpp>
+#include <eosio/chain/random.hpp>
 
 namespace cfg = cyber::config;
 using eosio::chain::config::stake_account_name;
@@ -74,7 +75,7 @@ public:
             total_blocks += prod.second;
         }
         size_t i = 0;
-        int64_t total_reward = ((emission_per_block * (cfg::_100percent - cfg::block_reward_pct) / cfg::_100percent) * total_blocks) * 
+        int64_t total_reward = ((emission_per_block - (emission_per_block * cfg::block_reward_pct) / cfg::_100percent) * total_blocks) * 
             (cfg::_100percent - cfg::workers_reward_pct) / cfg::_100percent;
         std::map<account_name, int64_t> ret;
         for (auto& prod : prod_blocks) {
@@ -139,7 +140,6 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_govern_tester) try {
     BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(init_amount, token._symbol), "alice"));
     BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(init_amount, token._symbol), "bob"));
     produce_block();
-    auto lpu = head_block_time();
     BOOST_CHECK_EQUAL(success(), stake.updatefunds(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.updatefunds(_alice, token._symbol.to_symbol_code()));
     govern.wait_schedule_activation();
@@ -159,16 +159,22 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_govern_tester) try {
     
     BOOST_CHECK_EQUAL(govern.get_balance(last_prod), -1);
     BOOST_CHECK_EQUAL(govern.get_balance(prev_prod), -1);
-    BOOST_CHECK_CLOSE_FRACTION(double(stake.get_agent(last_prod, token._symbol)["balance"].as<int64_t>()), 
-        double(init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[last_prod]) + rewards_of_elected[last_prod]), 0.0001);
-    BOOST_CHECK_CLOSE_FRACTION(double(stake.get_agent(prev_prod, token._symbol)["balance"].as<int64_t>()),
-       double(init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[prev_prod]) + rewards_of_elected[prev_prod]), 0.0001);
+    BOOST_CHECK_EQUAL(govern.get_balance(last_prod, false), rewards_of_elected[last_prod]);
+    BOOST_CHECK_EQUAL(govern.get_balance(prev_prod, false), rewards_of_elected[prev_prod]);
     
-    auto balance_a = stake.get_agent(_alice, token._symbol)["balance"];
-    auto balance_b = stake.get_agent(_bob,   token._symbol)["balance"];
+    BOOST_CHECK_EQUAL(stake.get_agent(last_prod, token._symbol)["balance"].as<int64_t>(),
+        init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[last_prod]));
+    BOOST_CHECK_EQUAL(stake.get_agent(prev_prod, token._symbol)["balance"].as<int64_t>(),
+        init_amount + get_reward_for_blocks(emission_per_block, prod_blocks[prev_prod]));
+    
+    auto balance_a = stake.get_agent(_alice, token._symbol)["balance"].as<int64_t>();
+    auto balance_b = stake.get_agent(_bob,   token._symbol)["balance"].as<int64_t>();
     
     last_prod = control->head_block_producer();
     prev_prod = last_prod == _alice ? _bob : _alice;
+    auto unconfirmed_balance_last = govern.get_balance(last_prod, false);
+    auto unconfirmed_balance_prev = govern.get_balance(prev_prod, false);
+    
     auto block_before_missed = govern.get_block_num();
     blocks_num = 20;
     for (auto i = 0; i < blocks_num; i++) {
@@ -181,10 +187,90 @@ BOOST_FIXTURE_TEST_CASE(rewards_test, cyber_govern_tester) try {
     }
     produce_block();
     
-    BOOST_CHECK_CLOSE_FRACTION(double(govern.get_balance(last_prod)), double(get_reward_for_blocks(emission_per_block, 1)), 0.0001);
-    BOOST_CHECK_CLOSE_FRACTION(double(govern.get_balance(prev_prod)), double(get_reward_for_blocks(emission_per_block, blocks_num)), 0.0001);
-    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["balance"], balance_a);
-    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"], balance_b);
+    //despite the fact that last_prod missed a lot of blocks, his unconfirmed balance does not burn out,
+    //because lib does not move, so the active schedule does not change
+    BOOST_CHECK_EQUAL(govern.get_balance(last_prod), get_reward_for_blocks(emission_per_block, 1) + unconfirmed_balance_last);
+    BOOST_CHECK_EQUAL(govern.get_balance(prev_prod), get_reward_for_blocks(emission_per_block, blocks_num) + unconfirmed_balance_prev);
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["balance"].as<int64_t>(), balance_a);
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"].as<int64_t>(), balance_b);
+    
+    auto gov_balance_a = govern.get_balance(_alice);
+    auto gov_balance_b = govern.get_balance(_bob);
+    
+    prod_blocks.clear();
+    blocks_num = govern.wait_reward(0, &prod_blocks);
+    for (auto& b : prod_blocks) {
+        BOOST_TEST_MESSAGE("--- " << b.first << " produced " << b.second << " blocks");
+    }
+    
+    last_prod = control->head_block_producer();
+    prev_prod = last_prod == _alice ? _bob : _alice;
+    
+    auto balance_last = last_prod == _alice ? balance_a : balance_b;
+    auto balance_prev = prev_prod == _alice ? balance_a : balance_b;
+    auto gov_balance_last = last_prod == _alice ? gov_balance_a : gov_balance_b;
+    auto gov_balance_prev = prev_prod == _alice ? gov_balance_a : gov_balance_b;
+    
+    BOOST_CHECK_EQUAL(stake.get_agent(last_prod, token._symbol)["balance"].as<int64_t>(),
+        balance_last + gov_balance_last + get_reward_for_blocks(emission_per_block, prod_blocks[last_prod]));
+    
+    BOOST_CHECK_EQUAL(stake.get_agent(prev_prod, token._symbol)["balance"].as<int64_t>(),
+        balance_prev + gov_balance_prev + get_reward_for_blocks(emission_per_block, prod_blocks[prev_prod]));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(no_rewards_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("No rewards test");
+    int64_t init_supply = 1000000000000;
+    deploy_sys_contracts(init_supply * 2);
+    int64_t init_amount = 1;
+    
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _whale, asset(init_supply, token._symbol), ""));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_whale, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(init_amount, token._symbol), "alice"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(init_amount, token._symbol), "bob"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(init_amount, token._symbol), "carol"));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_whale, stake_account_name, asset(init_amount, token._symbol), ""));
+    produce_block();
+    
+    BOOST_CHECK_EQUAL(stake.get_agent(_alice, token._symbol)["balance"].as<int64_t>(), init_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"].as<int64_t>(), init_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["balance"].as<int64_t>(), init_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"].as<int64_t>(), init_amount);
+    
+    govern.wait_schedule_activation();
+    std::map<account_name, uint32_t> prod_blocks;
+    auto blocks_num = govern.wait_reward(0, &prod_blocks, {_bob});
+    BOOST_CHECK(stake.get_agent(_alice, token._symbol)["balance"].as<int64_t>() > init_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"].as<int64_t>(), init_amount);
+    BOOST_CHECK(stake.get_agent(_carol, token._symbol)["balance"].as<int64_t>() > init_amount);
+    BOOST_CHECK(stake.get_agent(_whale, token._symbol)["balance"].as<int64_t>() > init_amount);
+    
+    BOOST_CHECK(govern.get_balance(_alice, false) > 0);
+    BOOST_CHECK(govern.get_balance(_bob,   false) > 0);
+    BOOST_CHECK(govern.get_balance(_carol, false) > 0);
+    BOOST_CHECK(govern.get_balance(_whale, false) > 0);
+    
+    BOOST_CHECK_EQUAL(govern.get_balance(_alice), -1);
+    BOOST_CHECK_EQUAL(govern.get_balance(_bob), -1);
+    BOOST_CHECK_EQUAL(govern.get_balance(_carol), -1);
+    BOOST_CHECK_EQUAL(govern.get_balance(_whale), -1);
+    
+    govern.wait_schedule_activation(true, {_bob});
+    
+    BOOST_CHECK_EQUAL(govern.get_balance(_alice, false), -1);
+    BOOST_CHECK_EQUAL(govern.get_balance(_bob,   false), -1);
+    BOOST_CHECK_EQUAL(govern.get_balance(_carol, false), -1);
+    BOOST_CHECK_EQUAL(govern.get_balance(_whale, false), -1);
+    
+    BOOST_CHECK(govern.get_balance(_alice) > 0);
+    BOOST_CHECK_EQUAL(govern.get_balance(_bob), -1);
+    BOOST_CHECK(govern.get_balance(_carol) > 0);
+    BOOST_CHECK(govern.get_balance(_whale) > 0);
+    
     produce_block();
 } FC_LOG_AND_RETHROW()
 
@@ -535,3 +621,50 @@ BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
 BOOST_AUTO_TEST_SUITE_END() // increase_producers_num
 
 BOOST_AUTO_TEST_SUITE_END() // cyber_govern_tests
+
+BOOST_AUTO_TEST_SUITE(cyber_govern_tests_ext, * boost::unit_test::disabled())
+BOOST_FIXTURE_TEST_CASE(shuffle_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("shuffle_test");
+    int max_step_num = 2000;
+
+    struct series_counter {
+        int val = 0;
+        int max_val = 0;
+        int last_step_num = -1;
+        void step(int num) {
+            BOOST_REQUIRE(num > last_step_num);
+            val = (num == last_step_num + 1) ? val + 1 : 1;
+            max_val = std::max(max_val, val);
+            last_step_num = num;
+        }
+    };
+    
+    using series_key = std::tuple<int, int, int>;
+    
+    for (size_t vec_size = 21; vec_size <= 101; vec_size++) {
+        std::vector<int> vec(vec_size);
+        std::iota(vec.begin(), vec.end(), 0);
+        std::map<series_key, series_counter> series;
+        
+        auto do_steps = [&](int num) {
+            for (size_t i = 0; i < vec_size; i++) {
+                series[series_key(vec[i], vec[(i + 1) % vec_size], vec[(i + 2) % vec_size])].step(num);
+            }
+        };
+        
+        do_steps(0);
+        for (int step_num = 1; step_num <= max_step_num; step_num++) {
+            shuffle(vec, step_num * vec_size);
+            do_steps(step_num);
+        }
+        int max_series = 0;
+        for (const auto& s : series) {
+            max_series = std::max(max_series, s.second.max_val);
+        }
+        BOOST_CHECK(max_series <= 3);
+        BOOST_TEST_MESSAGE("--- vec_size = " << vec_size << ", max_series = " << max_series);
+    }
+    
+} FC_LOG_AND_RETHROW()
+
+BOOST_AUTO_TEST_SUITE_END()

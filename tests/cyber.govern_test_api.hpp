@@ -23,8 +23,8 @@ public:
 
      ////tables
     
-    int64_t get_balance(account_name account) {
-        auto s = get_struct(_code, N(balance), account.value, "balance_struct");
+    int64_t get_balance(account_name account, bool confirmed = true) {
+        auto s = get_struct(_code, confirmed ? N(balance) : N(uncbalance), account.value, "balance_struct");
         return !s.is_null() ? s["amount"].as<int64_t>() : -1;
     }
     
@@ -48,47 +48,59 @@ public:
          return _tester->control->head_block_num() - get_block_num();
     }
     
-    uint32_t wait_for_proper_block(uint32_t interval, const std::string& s, uint32_t displ = 0) {
+    signed_block_ptr produce_block(const std::set<account_name>& disabled_producers = std::set<account_name>()) {
+        return (disabled_producers.count(_tester->control->pending_block_state()->header.producer)) ?
+            _tester->produce_block(fc::microseconds(chain::config::block_interval_us * 2)) :
+            _tester->produce_block();
+    }
+    
+    uint32_t wait_for_proper_block(uint32_t interval, const std::string& s, uint32_t displ = 0, 
+                                   std::map<account_name, uint32_t>* prod_blocks = nullptr, 
+                                   const std::set<account_name>& disabled_producers = std::set<account_name>()) {
         auto prev_block = _tester->control->head_block_num();
         while((get_block_num() + displ) % interval != 0) {
-            _tester->produce_block();
+            produce_block(disabled_producers);
+            if (prod_blocks) {
+                (*prod_blocks)[_tester->control->head_block_producer()]++;
+            }
         }
         uint32_t ret = _tester->control->head_block_num() - prev_block;
         BOOST_TEST_MESSAGE("--- waited " << ret << " blocks for " << s << " (displ = " << displ << ")");
         return ret;
     }
 
-    uint32_t wait_proposing() {
+    uint32_t wait_proposing(const std::set<account_name>& disabled_producers = std::set<account_name>()) {
         auto prev_block = _tester->control->head_block_num();
         while(get_block_num() != get_last_propose_block_num()) {
-            _tester->produce_block();
+            produce_block(disabled_producers);
         }
         uint32_t ret = _tester->control->head_block_num() - prev_block;
         BOOST_TEST_MESSAGE("--- waited " << ret << " blocks");
-        return ret;      
+        return ret;
     }
     
-    uint32_t wait_reward(uint32_t displ = 0) {
-        return wait_for_proper_block(cyber::config::reward_interval, "reward", displ);
+    uint32_t wait_reward(uint32_t displ = 0, std::map<account_name, uint32_t>* prod_blocks = nullptr, 
+                         const std::set<account_name>& disabled_producers = std::set<account_name>()) {
+        return wait_for_proper_block(cyber::config::reward_interval, "reward", displ, prod_blocks, disabled_producers);
     }
     
-    signed_block_ptr wait_irreversible_block(const uint32_t lib) {
+    signed_block_ptr wait_irreversible_block(const uint32_t lib, const std::set<account_name>& disabled_producers = std::set<account_name>()) {
         signed_block_ptr b;
         while (_tester->control->head_block_state()->dpos_irreversible_blocknum < lib) {
-            b = _tester->produce_block();
+            b = produce_block(disabled_producers);
         }
         return b;
     }
     
-    uint32_t wait_schedule_activation(bool change_version = true) {
-        auto blocks_for_update = wait_proposing();
+    uint32_t wait_schedule_activation(bool change_version = true, const std::set<account_name>& disabled_producers = std::set<account_name>()) {
+        auto blocks_for_update = wait_proposing(disabled_producers);
         auto prev_version = _tester->control->head_block_header().schedule_version;
         auto prev_block = _tester->control->head_block_num();
         auto prev_block_offset = get_block_offset();
         auto proposed_schedule_block_num = _tester->control->head_block_num() + 1; // see controller.cpp set_proposed_producers
-    
-        wait_irreversible_block(proposed_schedule_block_num);
-        wait_irreversible_block(_tester->control->head_block_num());
+        
+        wait_irreversible_block(proposed_schedule_block_num, disabled_producers);
+        wait_irreversible_block(_tester->control->head_block_num(), disabled_producers);
         BOOST_REQUIRE(_tester->control->head_block_header().schedule_version == prev_version);
         BOOST_REQUIRE(get_block_offset() == prev_block_offset);
         

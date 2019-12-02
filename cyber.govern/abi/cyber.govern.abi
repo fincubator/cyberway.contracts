@@ -22,10 +22,29 @@
                 { "type": "int64",         "name": "amount" }
             ]
         },{
+            "name": "producer_struct",
+            "base": "",
+            "fields": [
+                { "type": "name",          "name": "account" }
+            ]
+        },{
+            "name": "pending_producers_info",
+            "base": "",
+            "fields": [
+                {"type": "uint64",         "name": "id" },
+                { "type": "name[]",        "name": "accounts" }
+            ]
+        },{
             "name": "onblock",
             "base": "",
             "fields": [
                 { "type": "name",          "name": "producer" }
+            ]
+        },{
+            "name": "setactprods",
+            "base": "",
+            "fields": [
+                { "type": "name[]",        "name": "pending_active_producers" }
             ]
         }
     ],
@@ -34,6 +53,9 @@
         {
             "name": "onblock",
             "type": "onblock"
+        },{
+            "name": "setactprods",
+            "type": "setactprods"
         }
     ],
     "tables": [
@@ -52,6 +74,24 @@
             "type": "balance_struct",
             "indexes": [
                 { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
+            ]
+        },{
+            "name": "uncbalance",
+            "type": "balance_struct",
+            "indexes": [
+                { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
+            ]
+        },{
+            "name": "obligedprod",
+            "type": "producer_struct",
+            "indexes": [
+                { "name": "primary", "unique": "true", "orders": [ {"field": "account", "order": "asc"} ] }
+            ]
+        },{
+            "name": "pendingprods",
+            "type": "pending_producers_info",
+            "indexes": [
+                { "name": "primary", "unique": "true", "orders": [ {"field": "id", "order": "asc"} ] }
             ]
         }
     ],

@@ -140,6 +140,7 @@ public:
     }
 
     struct errors: contract_error_messages {
+        const string temp_unavailable = amsg("action is temporarily unavailable");
     } err;
 };  
 
@@ -278,6 +279,7 @@ BOOST_FIXTURE_TEST_CASE(no_rewards_test, cyber_govern_tester) try {
     
     govern.wait_schedule_activation(false, {_bob});
     BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    produce_block(fc::seconds(cfg::key_recovery_delay), 0, {_bob});
     BOOST_CHECK_EQUAL(success(), stake.setkey(_bob, token._symbol.to_symbol_code(), false));
     BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
     govern.wait_schedule_activation(true, {_bob});
@@ -296,6 +298,31 @@ BOOST_FIXTURE_TEST_CASE(no_rewards_test, cyber_govern_tester) try {
 } FC_LOG_AND_RETHROW()
 
 BOOST_AUTO_TEST_SUITE(reset_key)
+BOOST_FIXTURE_TEST_CASE(recovery_delay, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("reset_key/recovery_delay");
+    deploy_sys_contracts();
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_whale, token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_carol, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_carol, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_whale, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_whale, "active"));
+    for (size_t i = 0; i < 2222; i++) {
+        produce_block(fc::milliseconds(config::block_interval_ms), 0, {_bob});
+    }
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    BOOST_CHECK_EQUAL(err.temp_unavailable, stake.setkey(_bob, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(err.temp_unavailable, stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+    produce_block(fc::seconds(cfg::key_recovery_delay));
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_bob, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
 BOOST_FIXTURE_TEST_CASE(lib_stopped, cyber_govern_tester) try {
     BOOST_TEST_MESSAGE("reset_key/lib_stopped");
     deploy_sys_contracts();

@@ -1,4 +1,4 @@
-add_contract_with_abi(cyber.token abi/cyber.token.abi ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.token.cpp)
+add_contract(cyber.token cyber.token ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.token.cpp)
 target_include_directories(cyber.token.wasm
    PUBLIC 
    ${CMAKE_CURRENT_SOURCE_DIR}/include)

@@ -1,4 +1,4 @@
-add_contract_with_abi(cyber.bios abi/cyber.bios.abi ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.bios.cpp)
+add_contract(cyber.bios cyber.bios ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.bios.cpp)
 target_include_directories(cyber.bios.wasm
    PUBLIC
    ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.govern/include

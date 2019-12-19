@@ -1,4 +1,4 @@
-add_contract_with_abi(cyber.msig abi/cyber.msig.abi ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.msig.cpp)
+add_contract(cyber.msig cyber.msig ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.msig.cpp)
 target_include_directories(cyber.msig.wasm
    PUBLIC 
    ${CMAKE_CURRENT_SOURCE_DIR}/include)

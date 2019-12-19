@@ -63,20 +63,22 @@ namespace cyber {
    };
 
    class [[eosio::contract("cyber.bios")]] bios : public contract {
-      struct [[eosio::table("state")]] state_info {
+      struct state_info {
           time_point_sec last_close_bid;
       };
-      using state_singleton = eosio::singleton<"biosstate"_n, state_info>;
+      using state_singleton [[eosio::order("id","asc")]] =
+        eosio::singleton<"biosstate"_n, state_info>;
 
-      struct [[eosio::table, eosio::contract("cyber.bios")]] bid_refund {
+      struct bid_refund {
         name         bidder;
         eosio::asset amount;
 
         uint64_t primary_key()const { return bidder.value; }
       };
-      typedef eosio::multi_index< "bidrefunds"_n, bid_refund > bid_refund_table;
+      using bid_refund_table [[eosio::order("bidder","asc")]] =
+        eosio::multi_index<"bidrefunds"_n, bid_refund>;
 
-      struct [[eosio::table, eosio::contract("cyber.bios")]] name_bid {
+      struct name_bid {
         name              newname;
         name              high_bidder;
         int64_t           high_bid = 0; ///< negative high_bid == closed auction waiting to be claimed
@@ -85,9 +87,10 @@ namespace cyber {
         uint64_t primary_key()const { return newname.value;                    }
         uint64_t by_high_bid()const { return static_cast<uint64_t>(-high_bid); }
       };
-      typedef eosio::multi_index< "namebids"_n, name_bid,
-                                  eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<name_bid, uint64_t, &name_bid::by_high_bid>  >
-                                > name_bid_table;
+      using by_high [[using eosio: order("high_bid","desc"), non_unique]] =
+        eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<name_bid, uint64_t, &name_bid::by_high_bid>>;
+      using name_bid_table [[eosio::order("newname","asc")]] =
+        eosio::multi_index<"namebids"_n, name_bid, by_high>;
 
          void check_stake(name account);
       public:

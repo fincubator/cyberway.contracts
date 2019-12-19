@@ -28,7 +28,7 @@ using std::string;
 class [[eosio::contract("cyber.stake")]] stake : public eosio::contract {
 struct structures {
 
-    struct [[eosio::table]] candidate {
+    struct candidate {
         uint64_t id;
         symbol_code token_code;
         name account;
@@ -53,7 +53,7 @@ struct structures {
         void update_priority(int64_t cur_supply, bool can_increase);
     };
 
-    struct [[eosio::table]] agent {
+    struct agent {
         uint64_t id;
         symbol_code token_code;
         name account;
@@ -101,7 +101,7 @@ struct structures {
         }
      };
 
-    struct [[eosio::table]] grant {
+    struct grant {
         uint64_t id;
         symbol_code token_code;
         name grantor_name;
@@ -116,7 +116,7 @@ struct structures {
         key_t by_key()const { return std::make_tuple(token_code, grantor_name, recipient_name); }
     };
 
-    struct [[eosio::table]] param {
+    struct param {
         uint64_t id;
         symbol token_symbol;
         std::vector<uint8_t> max_proxies;
@@ -125,7 +125,7 @@ struct structures {
         uint64_t primary_key()const { return id; }
     };
 
-    struct [[eosio::table]] stat {
+    struct stat {
         uint64_t id;
         symbol_code token_code;
         int64_t total_staked;
@@ -135,7 +135,7 @@ struct structures {
         uint64_t primary_key()const { return id; }
     };
 
-    struct [[eosio::table]] provision {
+    struct provision_struct {
         uint64_t id;
         symbol_code token_code;
         name grantor_name;
@@ -147,7 +147,7 @@ struct structures {
         key_t by_key()const { return std::make_tuple(token_code, grantor_name, recipient_name); }
     };
 
-    struct [[eosio::table]] prov_payout {
+    struct prov_payout_struct {
         uint64_t id;
         symbol_code token_code;
         name grantor_name;
@@ -184,13 +184,15 @@ struct structures {
 
     using stats = eosio::multi_index<"stake.stat"_n, structures::stat, stat_id_index>;
 
-    using prov_id_index = eosio::indexed_by<"provid"_n, eosio::const_mem_fun<structures::provision, uint64_t, &structures::provision::primary_key> >;
-    using prov_key_index = eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::provision, structures::provision::key_t, &structures::provision::by_key> >;
-    using provs = eosio::multi_index<"provision"_n, structures::provision, prov_id_index, prov_key_index>;
+    using prov_key_index [[using eosio: order("token_code"), order("grantor_name"), order("recipient_name")]] =
+        eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::provision_struct, structures::provision_struct::key_t, &structures::provision_struct::by_key> >;
+    using provs [[eosio::order("id")]] =
+        eosio::multi_index<"provision"_n, structures::provision_struct, prov_key_index>;
 
-    using prov_payout_id_index = eosio::indexed_by<"provpayoutid"_n, eosio::const_mem_fun<structures::prov_payout, uint64_t, &structures::prov_payout::primary_key> >;
-    using prov_payout_acc_index = eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::prov_payout, structures::prov_payout::key_t, &structures::prov_payout::by_key> >;
-    using prov_payouts = eosio::multi_index<"provpayout"_n, structures::prov_payout, prov_payout_id_index, prov_payout_acc_index>;
+    using prov_payout_acc_index [[using eosio: order("token_code"), order("grantor_name"), order("recipient_name")]] =
+        eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::prov_payout_struct, structures::prov_payout_struct::key_t, &structures::prov_payout_struct::by_key> >;
+    using prov_payouts [[eosio::order("id")]] =
+        eosio::multi_index<"provpayout"_n, structures::prov_payout_struct, prov_payout_acc_index>;
 
     void update_stake_proxied(symbol_code token_code, name agent_name) {
         eosio::update_stake_proxied(token_code, agent_name, true);
@@ -323,7 +325,7 @@ public:
     [[eosio::action]] void create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window,
         int64_t min_own_staked_for_election);
 
-    [[eosio::action]] void enable(symbol_code token_symbol);
+    [[eosio::action]] void enable(symbol_code token_code);
 
     static inline bool enabled(symbol_code token_code) {
         staking_exists(token_code);

@@ -1,4 +1,4 @@
-add_contract_with_abi(cyber.stake abi/cyber.stake.abi ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.stake.cpp)
+add_contract(cyber.stake cyber.stake ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.stake.cpp)
 target_include_directories(cyber.stake.wasm
    PUBLIC 
    ${CMAKE_CURRENT_SOURCE_DIR}/include

@@ -594,7 +594,7 @@ void stake::update_provided(name grantor_name, name recipient_name, asset quanti
             provs_index.modify(prov_itr, name(), [&](auto& p) { p.amount += quantity.amount; });
         }
         else {
-            provs_table.emplace(grantor_name, [&]( auto &item ) { item = structures::provision {
+            provs_table.emplace(grantor_name, [&]( auto &item ) { item = structures::provision_struct {
                 .id = provs_table.available_primary_key(),
                 .token_code = token_code,
                 .grantor_name = grantor_name,
@@ -618,7 +618,7 @@ void stake::update_provided(name grantor_name, name recipient_name, asset quanti
             });
         }
         else {
-            payouts_table.emplace(grantor_name, [&]( auto &item ) { item = structures::prov_payout {
+            payouts_table.emplace(grantor_name, [&]( auto &item ) { item = structures::prov_payout_struct {
                 .id = provs_table.available_primary_key(),
                 .token_code = token_code,
                 .grantor_name = grantor_name,

@@ -46,6 +46,8 @@ add_subdirectory(cyber.govern)
 add_subdirectory(cyber.rejector)
 add_subdirectory(cyber.incomereject)
 
+add_subdirectory(scripts/base-genesis)
+
 if (APPLE)
    set(OPENSSL_ROOT "/usr/local/opt/openssl")
 elseif (UNIX)

@@ -10,8 +10,6 @@ ENV CYBERWAY /opt/cyberway/
 
 COPY . /cyberway.contracts
 
-RUN ldconfig
-
 RUN cd cyberway.contracts \
     && cmake -H. -B"build" \
         -GNinja \
@@ -22,6 +20,7 @@ RUN cd cyberway.contracts \
     && cmake --build build --target install
 
 FROM ubuntu:18.04
+ARG version=unknown
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get -y install openssl ca-certificates python3 python3-numpy python3-bson libusb-1.0-0-dev libcurl4-gnutls-dev \
@@ -29,9 +28,6 @@ RUN apt-get update \
 
 
 COPY --from=builder /opt/cyberway.contracts/ /opt/cyberway.contracts/
-
-ARG version=unknown
-RUN echo $version > /opt/cyberway.contracts/version
 
 COPY --from=builder /cyberway.contracts/build/tests/unit_test /opt/cyberway.contracts/unit_test
 COPY --from=builder /cyberway.contracts/tests/test_contracts /opt/cyberway.contracts/test_contracts
@@ -43,7 +39,7 @@ COPY --from=cyberway /opt/cyberway/bin/cleos /opt/cyberway/bin/cleos
 COPY --from=cyberway /opt/cyberway/bin/keosd /opt/cyberway/bin/keosd
 COPY --from=cyberway /opt/cyberway/bin/create-genesis /opt/cyberway/bin/create-genesis
 
-RUN ldconfig 
+RUN echo $version > /opt/cyberway.contracts/version &&  ldconfig 
 
 ENV CYBERWAY_TEST_CONTRACTS /opt/cyberway.contracts/test_contracts/
 ENV CYBERWAY_CONTRACTS /opt/cyberway.contracts/

@@ -8,15 +8,14 @@ docker images
 docker login -u=$DHUBU -p=$DHUBP
 
 if [[ ${BUILDKITE_BRANCH} == "master" ]]; then
-    docker tag cyberway/contracts:${REVISION} cyberway/contracts:stable
-    docker push cyberway/contracts:stable
+    TAG=stable
 elif [[ ${BUILDKITE_BRANCH} == "develop" ]]; then
-    docker tag cyberway/contracts:${REVISION} cyberway/contracts:latest
-    docker push cyberway/contracts:latest
+    TAG=latest
 else
-    docker tag cyberway/contracts:${REVISION} cyberway/contracts:${BUILDKITE_BRANCH}
-    docker push cyberway/contracts:${BUILDKITE_BRANCH}
+    TAG=${BUILDKITE_BRANCH}
 fi
 
+docker tag cyberway/contracts:${REVISION} cyberway/contracts:${TAG}
+docker push cyberway/contracts:${TAG}
 
 

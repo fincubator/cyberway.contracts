@@ -13,7 +13,7 @@ ENV CYBERWAY /opt/cyberway/
 
 COPY . /cyberway.contracts
 
-RUN cd cyberway.contracts \
+RUN ldconfig && cd cyberway.contracts \
     && cmake -H. -B"build" \
         -GNinja \
         -DCMAKE_BUILD_TYPE=Release \

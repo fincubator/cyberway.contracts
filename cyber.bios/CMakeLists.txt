@@ -1,4 +1,6 @@
 add_contract(cyber.bios cyber.bios ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.bios.cpp)
+install_contract(cyber.bios)
+
 target_include_directories(cyber.bios.wasm
    PUBLIC
    ${CMAKE_CURRENT_SOURCE_DIR}/../cyber.govern/include

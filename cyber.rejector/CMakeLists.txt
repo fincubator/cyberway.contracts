@@ -1,4 +1,6 @@
 add_contract(cyber.rejector cyber.rejector ${CMAKE_CURRENT_SOURCE_DIR}/src/cyber.rejector.cpp)
+install_contract(cyber.rejector)
+
 target_include_directories(cyber.rejector.wasm
    PUBLIC 
    ${CMAKE_CURRENT_SOURCE_DIR}/include)

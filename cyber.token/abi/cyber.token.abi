@@ -162,7 +162,43 @@
             ]
         },
         {
+            "name": "bulkpayment",
+            "base": "",
+            "fields": [
+                {
+                    "name": "from",
+                    "type": "name"
+                },
+                {
+                    "name": "recipients",
+                    "type": "recipient[]"
+                }
+            ]
+        },
+        {
             "name": "transfer",
+            "base": "",
+            "fields": [
+                {
+                    "name": "from",
+                    "type": "name"
+                },
+                {
+                    "name": "to",
+                    "type": "name"
+                },
+                {
+                    "name": "quantity",
+                    "type": "asset"
+                },
+                {
+                    "name": "memo",
+                    "type": "string"
+                }
+            ]
+        },
+        {
+            "name": "payment",
             "base": "",
             "fields": [
                 {
@@ -226,7 +262,7 @@
         },
         {
             "name": "bulkpayment",
-            "type": "bulktransfer"
+            "type": "bulkpayment"
         },
         {
             "name": "transfer",
@@ -234,7 +270,7 @@
         },
         {
             "name": "payment",
-            "type": "transfer"
+            "type": "payment"
         },
         {
             "name": "claim",

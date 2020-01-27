@@ -25,13 +25,13 @@ struct name_info {
 
 struct domain_bid {
     uint64_t        id;
-    domain_name     domain;
-    name            high_bidder;
+    domain_name     name;
+    eosio::name     high_bidder;
     int64_t         high_bid = 0;   ///< negative high_bid == closed auction waiting to be claimed
     time_point_sec  last_bid_time;
 
     uint64_t primary_key()  const { return id; }
-    domain_name by_domain() const { return domain; }
+    domain_name by_domain() const { return name; }
     int64_t by_high_bid()   const { return high_bid; }      // ordered desc, check abi
 };
 
@@ -39,7 +39,7 @@ using domain_index [[using eosio: order("name","asc"), contract("cyber.domain")]
     eosio::indexed_by<"domain"_n, eosio::const_mem_fun<domain_bid, domain_name, &domain_bid::by_domain>>;
 using domain_high_index [[using eosio: order("high_bid","desc"), order("name","asc"), contract("cyber.domain")]] =
     eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<domain_bid, int64_t, &domain_bid::by_high_bid>>;
-using domain_bid_tbl [[using eosio: order("bidder","asc"), contract("cyber.domain")]] =
+using domain_bid_tbl [[using eosio: order("id","asc"), contract("cyber.domain")]] =
     eosio::multi_index<"domainbid"_n, domain_bid, domain_index, domain_high_index>;
 
 struct domain_bid_refund {

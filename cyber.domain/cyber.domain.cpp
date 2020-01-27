@@ -80,7 +80,7 @@ void domain::biddomain(name bidder, const domain_name& name, asset bid) {
     if (current == idx.end()) {
         bids.emplace(bidder, [&](auto& b) {
             b.id = bids.available_primary_key();
-            b.domain = name;
+            b.name = name;
             set_bid(b);
         });
     } else {

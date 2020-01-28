@@ -15,7 +15,7 @@ else
     TAG=${BUILDKITE_BRANCH}
 fi
 
-docker tag cyberway/contracts:${REVISION} cyberway/contracts:${TAG}
-docker push cyberway/contracts:${TAG}
+docker tag cyberway/cyberway.contracts:${REVISION} cyberway/cyberway.contracts:${TAG}
+docker push cyberway/cyberway.contracts:${TAG}
 
 

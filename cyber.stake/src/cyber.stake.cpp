@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cyber.stake/cyber.stake.hpp>
 #include <cyber.token/cyber.token.hpp>
-#include <common/dispatchers.hpp>
 #include <common/parameter_ops.hpp>
 
 namespace cyber {
@@ -672,10 +671,3 @@ void stake::claim(name grantor_name, name recipient_name, symbol_code token_code
 }
 
 } /// namespace cyber
-
-DISPATCH_WITH_TRANSFER(cyber::stake, cyber::config::token_name, on_transfer,
-    (create)(enable)(open)(delegatevote)(setgrntterms)(recallvote)(withdraw)
-    (setproxylvl)(setproxyfee)(setminstaked)(setkey)
-    (updatefunds)(reward)(pick)
-    (delegateuse)(recalluse)(claim)
-)

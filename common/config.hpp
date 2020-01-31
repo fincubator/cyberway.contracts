@@ -16,6 +16,9 @@ inline eosio::chain::name operator ""_n() {
 }
 #endif
 
+#define CYBER_TOKEN "cyber.token"
+#define CYBER_STAKE "cyber.stake"
+
 namespace cyber { namespace config {
 
 // contracts

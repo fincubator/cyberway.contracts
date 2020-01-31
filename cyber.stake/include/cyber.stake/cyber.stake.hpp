@@ -12,6 +12,7 @@
 #include <tuple>
 #include <eosio/privileged.hpp>
 #include <common/util.hpp>
+#include <common/dispatchers.hpp>
 
 #define table_owner name()
 
@@ -343,7 +344,7 @@ public:
 
     [[eosio::action]] void withdraw(name account, asset quantity);
 
-    void on_transfer(name from, name to, asset quantity, std::string memo);
+    ON_TRANSFER(CYBER_TOKEN, on_transfer) void on_transfer(name from, name to, asset quantity, std::string memo);
 
     [[eosio::action]] void setproxylvl(name account, symbol_code token_code, uint8_t level);
     [[eosio::action]] void setproxyfee(name account, symbol_code token_code, int16_t fee);

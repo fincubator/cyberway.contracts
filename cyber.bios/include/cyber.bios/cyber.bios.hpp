@@ -7,6 +7,7 @@
 #include <eosio/producer_schedule.hpp>
 #include <eosio/singleton.hpp>
 #include <eosio/time.hpp>
+#include <common/dispatchers.hpp>
 
 namespace cyber {
    using eosio::permission_level;
@@ -163,8 +164,8 @@ namespace cyber {
 
          [[eosio::action]] void onblock(ignore<block_header> header);
          
-         void on_stake_withdraw(name account, asset quantity);
-         void on_stake_provide(name provider_name, name consumer_name, asset quantity);
+         [[eosio::on_notify(CYBER_STAKE "::withdraw")]] void on_stake_withdraw(name account, asset quantity);
+         [[eosio::on_notify(CYBER_STAKE "::provide")]] void on_stake_provide(name provider_name, name consumer_name, asset quantity);
 
    };
 

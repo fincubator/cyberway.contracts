@@ -2,7 +2,6 @@
 #include <common/config.hpp>
 #include <cyber.token/cyber.token.hpp>
 #include <eosio/eosio.hpp>
-#include <eosio/dispatcher.hpp>
 
 #include "domain_validate.cpp"
 
@@ -169,8 +168,3 @@ void domain::declarenames(const std::vector<name_info>& domains) {
 }
 
 } // eosiosystem
-
-
-EOSIO_DISPATCH(eosiosystem::domain,
-    (newdomain)(checkwin)(biddomain)(biddmrefund)(declarenames)
-)

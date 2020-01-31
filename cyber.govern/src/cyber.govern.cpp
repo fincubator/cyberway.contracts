@@ -222,5 +222,3 @@ void govern::maybe_promote_producers() {
 }
 
 }
-
-EOSIO_DISPATCH( cyber::govern, (onblock)(setactprods))

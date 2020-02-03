@@ -10,7 +10,8 @@
             "privileged": true,
             "permissions": [
                 {"name": "owner",  "keys": []},
-                {"name": "active", "keys": ["INITIAL"]}
+                {"name": "active", "keys": ["INITIAL"]},
+                {"name": "prods",  "keys": [], "threshold": 2, "accounts": ["cyber.prods@active"], "waits": ["1209600"]}
             ],
             "abi":  {"path": "${CYBERWAY_CONTRACTS}/cyber.bios/cyber.bios.abi", "hash":""},
             "code": {"path": "${CYBERWAY_CONTRACTS}/cyber.bios/cyber.bios.wasm", "hash":""}
@@ -37,6 +38,14 @@
                 {"name": "active", "keys": [], "accounts": []}
             ]
         },
+        {"name": "cyber.prods",
+            "permissions": [
+                {"name": "owner",  "keys": [], "accounts": []},
+                {"name": "active", "keys": [], "accounts": ["cyber@active"]},
+                {"name": "prod.major", "keys": [], "accounts": ["cyber@active"]},
+                {"name": "prod.minor", "keys": [], "accounts": ["cyber@active"]}
+            ]
+        },
         {"name": "cyber.token",
             "permissions": [
                 {"name": "owner",  "keys": [], "accounts": ["cyber@owner"]},
@@ -45,7 +54,7 @@
             "abi":  {"path": "${CYBERWAY_CONTRACTS}/cyber.token/cyber.token.abi", "hash":""},
             "code": {"path": "${CYBERWAY_CONTRACTS}/cyber.token/cyber.token.wasm", "hash":""}
         },
-	{"name": "cyber.msig",
+        {"name": "cyber.msig",
             "permissions": [
                 {"name": "owner",  "keys": [], "accounts": ["cyber@owner"]},
                 {"name": "active", "keys": [], "accounts": ["cyber@active"]}

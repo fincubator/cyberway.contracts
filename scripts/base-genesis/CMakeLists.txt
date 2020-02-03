@@ -1,7 +1,7 @@
 set(GENESIS_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(CYBERWAY_CONTRACTS ${CMAKE_BINARY_DIR})
 
-string(TIMESTAMP INITIAL_TIMESTAMP %Y-%m-%dT%H:%M:%S.000)
+string(TIMESTAMP INITIAL_TIMESTAMP %Y-%m-%dT%H:%M:%S.000 UTC)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/genesis.json.tmpl ${CMAKE_CURRENT_BINARY_DIR}/genesis.json.tmpl @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/genesis-info.json.tmpl ${CMAKE_CURRENT_BINARY_DIR}/genesis-info.json)

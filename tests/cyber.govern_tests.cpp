@@ -122,8 +122,27 @@ public:
             supply_amount != max_supply_amount ? safe_pct<int64_t>(cfg::block_reward_pct, emission) : 0);
         produce_block();
     }
+    
+    std::vector<account_name> reg_candidates(size_t num, int64_t amount_start, int64_t amount_step = 0) {
+        std::vector<account_name> ret;
+        for (int u = 0; u < num; u++) {
+            ret.emplace_back(user_name(u));
+        }
+        create_accounts(ret);
+        for (int u = 0; u < num; u++) {
+            auto user = user_name(u);
+            auto quantity = asset(amount_start + (amount_step * u), token._symbol);
+            BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, quantity, ""));
+            BOOST_CHECK_EQUAL(success(), stake.register_candidate(user, token._symbol.to_symbol_code()));
+            BOOST_CHECK_EQUAL(success(), token.transfer(user, stake_account_name, quantity));
+        }
+        return ret;
+    }
 
     struct errors: contract_error_messages {
+        const string temp_unavailable = amsg("action is temporarily unavailable");
+        const string incorrect_shift = amsg("incorrect shift");
+        const string shift_not_changed = amsg("the shift has not changed");
     } err;
 };  
 
@@ -248,9 +267,10 @@ BOOST_FIXTURE_TEST_CASE(no_rewards_test, cyber_govern_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"].as<int64_t>(), init_amount);
     BOOST_CHECK(stake.get_agent(_carol, token._symbol)["balance"].as<int64_t>() > init_amount);
     BOOST_CHECK(stake.get_agent(_whale, token._symbol)["balance"].as<int64_t>() > init_amount);
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
     
     BOOST_CHECK(govern.get_balance(_alice, false) > 0);
-    BOOST_CHECK(govern.get_balance(_bob,   false) > 0);
+    BOOST_CHECK_EQUAL(govern.get_balance(_bob, false), -1);
     BOOST_CHECK(govern.get_balance(_carol, false) > 0);
     BOOST_CHECK(govern.get_balance(_whale, false) > 0);
     
@@ -259,6 +279,11 @@ BOOST_FIXTURE_TEST_CASE(no_rewards_test, cyber_govern_tester) try {
     BOOST_CHECK_EQUAL(govern.get_balance(_carol), -1);
     BOOST_CHECK_EQUAL(govern.get_balance(_whale), -1);
     
+    govern.wait_schedule_activation(false, {_bob});
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    produce_block(fc::seconds(cfg::key_recovery_delay), 0, {_bob});
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_bob, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
     govern.wait_schedule_activation(true, {_bob});
     
     BOOST_CHECK_EQUAL(govern.get_balance(_alice, false), -1);
@@ -273,6 +298,176 @@ BOOST_FIXTURE_TEST_CASE(no_rewards_test, cyber_govern_tester) try {
     
     produce_block();
 } FC_LOG_AND_RETHROW()
+
+BOOST_AUTO_TEST_SUITE(reset_key)
+BOOST_FIXTURE_TEST_CASE(recovery_delay, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("reset_key/recovery_delay");
+    deploy_sys_contracts();
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_whale, token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_carol, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_carol, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_whale, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_whale, "active"));
+    for (size_t i = 0; i < 2222; i++) {
+        produce_block(fc::milliseconds(config::block_interval_ms), 0, {_bob});
+    }
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    BOOST_CHECK_EQUAL(err.temp_unavailable, stake.setkey(_bob, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(err.temp_unavailable, stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+    produce_block(fc::seconds(cfg::key_recovery_delay));
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_bob, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(lib_stopped, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("reset_key/lib_stopped");
+    deploy_sys_contracts();
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    for (size_t i = 0; i < 2222; i++) {
+        produce_block(fc::milliseconds(config::block_interval_ms), 0, {_bob});
+    }
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(lib_moved, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("reset_key/lib_moved");
+    deploy_sys_contracts();
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_whale, token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_carol, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_carol, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_whale, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_whale, "active"));
+    for (size_t i = 0; i < 2222; i++) {
+        produce_block(fc::milliseconds(config::block_interval_ms), 0, {_bob});
+    }
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    BOOST_CHECK_EQUAL(stake.get_candidate(_carol, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_carol, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_whale, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_whale, "active"));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(lib_resumed, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("reset_key/lib_resumed");
+    deploy_sys_contracts();
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_whale, token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_carol, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_carol, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_whale, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_whale, "active"));
+    for (size_t i = 0; i < 2222; i++) {
+        produce_block(fc::milliseconds(config::block_interval_ms), 0, {_alice, _bob});
+    }
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_carol, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_carol, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_whale, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_whale, "active"));
+    for (size_t i = 0; i < 2222; i++) {
+        produce_block(fc::milliseconds(config::block_interval_ms), 0, {_bob});
+    }
+    BOOST_CHECK_EQUAL(stake.get_candidate(_alice, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_alice, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_bob,   token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    BOOST_CHECK_EQUAL(stake.get_candidate(_carol, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_carol, "active"));
+    BOOST_CHECK_EQUAL(stake.get_candidate(_whale, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_whale, "active"));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(producer_replacement, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("reset_key/producer_replacement");
+    deploy_sys_contracts();
+    auto cur_producers = reg_candidates(cfg::min_producers_num, 1000);
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group({cfg::internal_name}));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(cur_producers));
+    auto pre_sched_version = control->pending_block_state()->active_schedule.version;
+    
+    while ((control->pending_block_state()->active_schedule.version - pre_sched_version) < cfg::omission_limit - 1) {
+        govern.wait_schedule_activation(true, {cur_producers[0]});
+    }
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(cur_producers));
+    for (size_t p = 0; p < cur_producers.size(); p++) {
+        BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[p], token._symbol)["signing_key"].as<public_key_type>(), get_public_key(cur_producers[p], "active"));
+    }
+    govern.wait_schedule_activation(true, {cur_producers[0]});
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(cur_producers));
+    BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[0], token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    for (size_t p = 1; p < cur_producers.size(); p++) {
+        BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[p], token._symbol)["signing_key"].as<public_key_type>(), get_public_key(cur_producers[p], "active"));
+    }
+    
+    govern.wait_schedule_activation(false, {cur_producers[0]});
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(cur_producers));
+    
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation(true, {cur_producers[0]});
+    cur_producers[0] = _alice;
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(cur_producers));
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(unreg_sleeping_producer, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("reset_key/unreg_sleeping_producer");
+    deploy_sys_contracts();
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob,   token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_alice, token._symbol.to_symbol_code(), true));
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_bob,   token._symbol.to_symbol_code(), true));
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_carol, token._symbol.to_symbol_code(), true));
+    
+    auto cur_producers = reg_candidates(cfg::min_producers_num, 1000);
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group({cfg::internal_name}));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(cur_producers));
+    
+    auto pre_sched_version = control->pending_block_state()->active_schedule.version;
+    
+    while ((control->pending_block_state()->active_schedule.version - pre_sched_version) < cfg::omission_limit - 1) {
+        govern.wait_schedule_activation(true, {cur_producers[0], cur_producers[1], cur_producers[2]});
+    }
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(cur_producers[0], token._symbol.to_symbol_code(), 1));
+    BOOST_CHECK_EQUAL(success(), stake.setkey(cur_producers[1], token._symbol.to_symbol_code(), true));
+    
+    BOOST_CHECK(stake.get_candidate(cur_producers[0], token._symbol).is_null());
+    BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[1], token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    for (size_t p = 2; p < cur_producers.size(); p++) {
+        BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[p], token._symbol)["signing_key"].as<public_key_type>(), get_public_key(cur_producers[p], "active"));
+    }
+    govern.wait_schedule_activation(false, {cur_producers[0], cur_producers[1], cur_producers[2]});
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_alice, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_bob,   token._symbol.to_symbol_code(), false));
+    govern.wait_schedule_activation(true, {cur_producers[0], cur_producers[1], cur_producers[2]});
+    
+    BOOST_CHECK_EQUAL(success(), stake.setkey(_carol, token._symbol.to_symbol_code(), false));
+    //3 times because we don't know in which order the keys will be reset
+    govern.wait_schedule_activation(true, {cur_producers[0], cur_producers[1], cur_producers[2]});
+    govern.wait_schedule_activation(true, {cur_producers[0], cur_producers[1], cur_producers[2]});
+    govern.wait_schedule_activation(true, {cur_producers[0], cur_producers[1], cur_producers[2]});
+    BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[2], token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
+    produce_block();
+} FC_LOG_AND_RETHROW()
+
+BOOST_AUTO_TEST_SUITE_END() // reset_key
 
 BOOST_AUTO_TEST_SUITE(emission)
 BOOST_FIXTURE_TEST_CASE(no_staked_test, cyber_govern_tester) try {
@@ -504,9 +699,9 @@ BOOST_FIXTURE_TEST_CASE(reserve_freq_test, cyber_govern_tester) try {
 
 BOOST_AUTO_TEST_SUITE_END() // election
 
-BOOST_AUTO_TEST_SUITE(increase_producers_num)
+BOOST_AUTO_TEST_SUITE(schedule_size)
 BOOST_FIXTURE_TEST_CASE(not_enough_producers_test, cyber_govern_tester) try {
-    BOOST_TEST_MESSAGE("increase_producers_num/not_enough_producers_test");
+    BOOST_TEST_MESSAGE("schedule_size/not_enough_producers_test");
     deploy_sys_contracts();
     
     std::vector<account_name> cur_pbs;
@@ -523,56 +718,66 @@ BOOST_FIXTURE_TEST_CASE(not_enough_producers_test, cyber_govern_tester) try {
 
 } FC_LOG_AND_RETHROW()
 
-BOOST_FIXTURE_TEST_CASE(blocking_votes_test, cyber_govern_tester) try {
-    BOOST_TEST_MESSAGE("increase_producers_num/blocking_votes_test");
+BOOST_FIXTURE_TEST_CASE(set_shift_test, cyber_govern_tester) try {
+    BOOST_TEST_MESSAGE("schedule_size/set_shift_test");
     deploy_sys_contracts();
     
-    int64_t votes_top = 0;
-    double overlay = 0.05;
-    int64_t votes_displ = 3;
-    int u = 0;
-    int64_t default_votes = 1000;
-    for (; u < cfg::min_producers_num; u++) {
-        auto user = user_name(u);
-        create_accounts({user});
-        BOOST_CHECK_EQUAL(success(), stake.register_candidate(user, token._symbol.to_symbol_code()));
-        BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, asset(default_votes, token._symbol), ""));
-        BOOST_CHECK_EQUAL(success(), token.transfer(user, stake_account_name, asset(default_votes, token._symbol)));
-        votes_top += default_votes;
-    }
+    reg_candidates(cfg::min_producers_num + 2, 1000);
     govern.wait_schedule_activation();
-    size_t cur_pbs_num = cfg::min_producers_num;
-    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_pbs_num);
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num);
     
-    for (size_t i = 0; i < 3; i++) {
-        BOOST_TEST_MESSAGE("-- waiting for the next increase (" << cur_pbs_num + 1 << ")");
-        produce_block(fc::seconds((1.0 + overlay) * cfg::schedule_increase_min_delay));
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 1);
     
-        auto votes_wo_reserve = votes_top - (default_votes * cfg::active_reserve_producers_num);
-        int64_t votes_total_target = static_cast<eosio::chain::int128_t>(votes_wo_reserve) * cfg::_100percent / cfg::schedule_increase_blocking_votes_pct;
-        auto cur_votes = (votes_total_target - votes_top) - votes_displ;
-        
-        auto user = user_name(u++);
-        create_accounts({user});
-        BOOST_CHECK_EQUAL(success(), stake.register_candidate(user, token._symbol.to_symbol_code()));
-        BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, asset(cur_votes, token._symbol), ""));
-        BOOST_CHECK_EQUAL(success(), token.transfer(user, stake_account_name, asset(cur_votes, token._symbol)));
-        govern.wait_schedule_activation();
-        BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_pbs_num);
-        
-        auto cur_votes_add = votes_displ * 2;
-        BOOST_CHECK_EQUAL(success(), token.issue(_issuer, user, asset(cur_votes_add, token._symbol), ""));
-        BOOST_CHECK_EQUAL(success(), token.transfer(user, stake_account_name, asset(cur_votes_add, token._symbol)));
-        govern.wait_schedule_activation();
-        cur_pbs_num++;
-        BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_pbs_num);
-        votes_top += cur_votes + cur_votes_add;
-    }
+    BOOST_CHECK_EQUAL(err.incorrect_shift, govern.set_shift(-2));
+    BOOST_CHECK_EQUAL(err.incorrect_shift, govern.set_shift(2));
+    BOOST_CHECK_EQUAL(err.shift_not_changed, govern.set_shift(1));
+    BOOST_CHECK_EQUAL(success(), govern.set_shift(0));
+    
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 1);
+    
+    BOOST_CHECK_EQUAL(success(), govern.set_shift(-1));
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num);
+    
+    BOOST_CHECK_EQUAL(success(), govern.set_shift(1));
+    
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 1);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 2);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 2);
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    produce_block(fc::seconds(cfg::schedule_resize_min_delay));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 2);
+    
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_alice, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.register_candidate(_bob, token._symbol.to_symbol_code()));
+    govern.wait_schedule_activation();
+    BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cfg::min_producers_num + 4);
 
+    produce_block();
 } FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
-    BOOST_TEST_MESSAGE("increase_producers_num/waiting_test");
+    BOOST_TEST_MESSAGE("schedule_size/waiting_test");
     deploy_sys_contracts();
     int64_t votes_per_user = 1000;
     double overlay = 0.3;
@@ -593,7 +798,7 @@ BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
     
     for (int i = cur_active_bps_num; i < cfg::max_producers_num + 2; i++) {
         BOOST_TEST_MESSAGE("-- waiting for the next increase (" << cur_active_bps_num + 1 << ")");
-        produce_block(fc::seconds((1.0 - overlay) * cfg::schedule_increase_min_delay));
+        produce_block(fc::seconds((1.0 - overlay) * cfg::schedule_resize_min_delay));
         
         int64_t bps_target_num = (static_cast<eosio::chain::int128_t>(cur_active_bps_num) * cfg::_100percent / cfg::schedule_increase_blocking_votes_pct) + 1;
         for (int j = cur_pbs_num; j < bps_target_num; j++) {
@@ -608,7 +813,7 @@ BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
         govern.wait_schedule_activation();
         
         BOOST_CHECK_EQUAL(govern.get_active_producers().size(), cur_active_bps_num);
-        produce_block(fc::seconds(overlay * 2.0 * cfg::schedule_increase_min_delay));
+        produce_block(fc::seconds(overlay * 2.0 * cfg::schedule_resize_min_delay));
         govern.wait_schedule_activation();
         if (cur_active_bps_num < cfg::max_producers_num) {
             cur_active_bps_num++;
@@ -618,7 +823,7 @@ BOOST_FIXTURE_TEST_CASE(waiting_test, cyber_govern_tester) try {
     
 } FC_LOG_AND_RETHROW()
 
-BOOST_AUTO_TEST_SUITE_END() // increase_producers_num
+BOOST_AUTO_TEST_SUITE_END() // schedule_size
 
 BOOST_AUTO_TEST_SUITE_END() // cyber_govern_tests
 

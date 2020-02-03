@@ -52,7 +52,7 @@ void govern::onblock(name producer) {
             balances_table.modify(b, name(), [&](auto& b) { b.amount += block_reward + just_confirmed_balance; } );
         }
         else {
-            balances_table.emplace(_self, [&](auto& b) { b = structures::balance {
+            balances_table.emplace(_self, [&](auto& b) { b = structures::balance_struct {
                 .account = producer,
                 .amount = block_reward + just_confirmed_balance
             };});
@@ -129,7 +129,7 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
             unconfirmed_balances_table.modify(b, name(), [&](auto& b) { b.amount += r.second; } );
         }
         else {
-            unconfirmed_balances_table.emplace(_self, [&](auto& b) { b = structures::balance {
+            unconfirmed_balances_table.emplace(_self, [&](auto& b) { b = structures::balance_struct {
                 .account = r.first,
                 .amount = r.second
             };});
@@ -188,7 +188,7 @@ int64_t govern::get_target_emission_per_block(int64_t supply) const {
 void govern::setactprods(std::vector<name> pending_active_producers) {
     require_auth(_self);
     pending_producers pending_prods_table(_self, _self.value);
-    auto prods = pending_prods_table.get_or_default(structures::pending_producers_state{});
+    auto prods = pending_prods_table.get_or_default(structures::pending_producers_info{});
     if (!prods.accounts.empty()) {
         eosio::print("WARNING! govern::setactprods, pending_prods_table was not empty\n");
     }
@@ -198,7 +198,7 @@ void govern::setactprods(std::vector<name> pending_active_producers) {
 
 void govern::maybe_promote_producers() {
     pending_producers pending_prods_table(_self, _self.value);
-    auto prods = pending_prods_table.get_or_default(structures::pending_producers_state{});
+    auto prods = pending_prods_table.get_or_default(structures::pending_producers_info{});
     if (prods.accounts.empty()) {
         return;
     }
@@ -215,12 +215,10 @@ void govern::maybe_promote_producers() {
     }
     
     for (const auto& acc : prods.accounts) {
-        obliged_prods_table.emplace(_self, [&](auto& p) { p = structures::producer { .account = acc }; });
+        obliged_prods_table.emplace(_self, [&](auto& p) { p = structures::producer_struct { .account = acc }; });
     }
     prods.accounts.clear();
     pending_prods_table.set(prods, _self);
 }
 
 }
-
-EOSIO_DISPATCH( cyber::govern, (onblock)(setactprods))

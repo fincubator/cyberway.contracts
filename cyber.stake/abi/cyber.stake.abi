@@ -23,7 +23,7 @@
                 {"name":"date",             "type":"time_point_sec"}
             ]
         },{
-            "name": "create_args",
+            "name": "create",
             "base": "",
             "fields": [
                 { "type": "symbol",                 "name": "token_symbol" },
@@ -32,7 +32,7 @@
                 { "type": "int64",                  "name": "min_own_staked_for_election"  }
             ]
         },{
-            "name": "open_args",
+            "name": "open",
             "base": "",
             "fields": [
                 { "type": "name",                   "name": "owner" },
@@ -40,13 +40,13 @@
                 { "type": "name?",                  "name": "ram_payer" }
             ]
         },{
-            "name": "enable_args",
+            "name": "enable",
             "base": "",
             "fields": [
                 { "type": "symbol_code",    "name": "token_code" }
             ]
         },{
-            "name": "delegate_args",
+            "name": "delegatevote",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "grantor_name" },
@@ -54,7 +54,23 @@
                 { "type": "asset",          "name": "quantity"  }
             ]
         },{
-            "name": "recallvote_args",
+            "name": "delegateuse",
+            "base": "",
+            "fields": [
+                { "type": "name",           "name": "grantor_name" },
+                { "type": "name",           "name": "recipient_name"  },
+                { "type": "asset",          "name": "quantity"  }
+            ]
+        },{
+            "name": "recalluse",
+            "base": "",
+            "fields": [
+                { "type": "name",           "name": "grantor_name" },
+                { "type": "name",           "name": "recipient_name"  },
+                { "type": "asset",          "name": "quantity"  }
+            ]
+        },{
+            "name": "recallvote",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "grantor_name" },
@@ -63,53 +79,56 @@
                 { "type": "int16",          "name": "pct"  }
             ]
         },{
-            "name": "setterms_args",
-            "base": "recallvote_args",
+            "name": "setgrntterms",
+            "base": "",
             "fields": [
+                { "type": "name",           "name": "grantor_name" },
+                { "type": "name",           "name": "recipient_name"  },
+                { "type": "symbol_code",    "name": "token_code"  },
+                { "type": "int16",          "name": "pct"  },
                 { "type": "int16",          "name": "break_fee"  },
                 { "type": "int64",          "name": "break_min_own_staked"  }
             ]
         },{
-            "name": "withdraw_args",
+            "name": "withdraw",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "account" },
                 { "type": "asset",          "name": "quantity"  }
             ]
         },{
-            "name": "acc_code_args",
+            "name": "setproxylvl",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "account" },
-                { "type": "symbol_code",    "name": "token_code"  }
-            ]
-        },{
-            "name": "setproxylvl_args",
-            "base": "acc_code_args",
-            "fields": [
+                { "type": "symbol_code",    "name": "token_code"  },
                 { "type": "uint8",          "name": "level"  }
             ]
         },{
-            "name": "setproxyfee_args",
-            "base": "acc_code_args",
+            "name": "setproxyfee",
+            "base": "",
             "fields": [
+                { "type": "name",           "name": "account" },
+                { "type": "symbol_code",    "name": "token_code"  },
                 { "type": "int16",          "name": "fee"  }
             ]
         },{
-            "name": "setminstaked_args",
-            "base": "acc_code_args",
+            "name": "setminstaked",
+            "base": "",
             "fields": [
+                { "type": "name",           "name": "account" },
+                { "type": "symbol_code",    "name": "token_code"  },
                 { "type": "int64",          "name": "min_own_staked"  }
             ]
         },{
-            "name": "updatefunds_args",
+            "name": "updatefunds",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "account" },
                 { "type": "symbol_code",    "name": "token_code"  }
             ]
         },{
-            "name": "setkey_args",
+            "name": "setkey",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "account" },
@@ -117,28 +136,28 @@
                 { "type": "public_key?",    "name": "signing_key"  }
             ]
         },{
-            "name": "name_int_pair",
+            "name": "pair_name_int64",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "first" },
                 { "type": "int64",          "name": "second"  }
             ]
         },{
-            "name": "reward_args",
+            "name": "reward",
             "base": "",
             "fields": [
-                { "type": "name_int_pair[]","name": "rewards" },
+                { "type": "pair_name_int64[]","name": "rewards" },
                 { "type": "symbol",         "name": "sym"  }
             ]
         },{
-            "name": "pick_args",
+            "name": "pick",
             "base": "",
             "fields": [
                 { "type": "symbol_code",    "name": "token_code" },
                 { "type": "name[]",         "name": "accounts" }
             ]
         },{
-            "name": "claim_args",
+            "name": "claim",
             "base": "",
             "fields": [
                 { "type": "name",           "name": "grantor_name" },
@@ -151,55 +170,55 @@
     "actions": [
         {
             "name": "create",
-            "type": "create_args"
+            "type": "create"
         },{
             "name": "open",
-            "type": "open_args"
+            "type": "open"
         },{
             "name": "enable",
-            "type": "enable_args"
+            "type": "enable"
         },{
             "name": "delegatevote",
-            "type": "delegate_args"
+            "type": "delegatevote"
         },{
             "name": "setgrntterms",
-            "type": "setterms_args"
+            "type": "setgrntterms"
         },{
             "name": "recallvote",
-            "type": "recallvote_args"
+            "type": "recallvote"
         },{
             "name": "withdraw",
-            "type": "withdraw_args"
+            "type": "withdraw"
         },{
             "name": "setproxylvl",
-            "type": "setproxylvl_args"
+            "type": "setproxylvl"
         },{
             "name": "setproxyfee",
-            "type": "setproxyfee_args"
+            "type": "setproxyfee"
         },{
             "name": "setminstaked",
-            "type": "setminstaked_args"
+            "type": "setminstaked"
         },{
             "name": "setkey",
-            "type": "setkey_args"
+            "type": "setkey"
         },{
             "name": "updatefunds",
-            "type": "updatefunds_args"
+            "type": "updatefunds"
         },{
             "name": "reward",
-            "type": "reward_args"
+            "type": "reward"
         },{
             "name": "pick",
-            "type": "pick_args"
+            "type": "pick"
         },{
             "name": "delegateuse",
-            "type": "delegate_args"
+            "type": "delegateuse"
         },{
             "name": "recalluse",
-            "type": "delegate_args"
+            "type": "recalluse"
         },{
             "name": "claim",
-            "type": "claim_args"
+            "type": "claim"
         }
     ],
     "tables": [

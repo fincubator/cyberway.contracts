@@ -20,7 +20,15 @@ RUN ldconfig && cd cyberway.contracts \
         -DCMAKE_INSTALL_PREFIX=/opt/cyberway.contracts/ \
         -Dcyberway.cdt_DIR=/opt/cyberway.cdt/lib/cmake/cyberway.cdt \
         -DEOSIO_ROOT=$CYBERWAY \
-    && cmake --build build --target install
+    && cmake --build build --target install \
+    && /opt/cyberway.cdt/bin/cyberway-abidiff /opt/cyberway.contracts/cyber.token/cyber.token.abi ./cyber.token/abi/cyber.token.abi \
+    && /opt/cyberway.cdt/bin/cyberway-abidiff /opt/cyberway.contracts/cyber.govern/cyber.govern.abi ./cyber.govern/abi/cyber.govern.abi \
+    && /opt/cyberway.cdt/bin/cyberway-abidiff /opt/cyberway.contracts/cyber.msig/cyber.msig.abi ./cyber.msig/abi/cyber.msig.abi \
+    && /opt/cyberway.cdt/bin/cyberway-abidiff /opt/cyberway.contracts/cyber.rejector/cyber.rejector.abi ./cyber.rejector/abi/cyber.rejector.abi \
+    && /opt/cyberway.cdt/bin/cyberway-abidiff /opt/cyberway.contracts/cyber.incomereject/cyber.incomereject.abi ./cyber.incomereject/abi/cyber.incomereject.abi \
+    && /opt/cyberway.cdt/bin/cyberway-abidiff /opt/cyberway.contracts/cyber.bios/cyber.bios.abi ./cyber.bios/abi/cyber.bios.abi \
+    && /opt/cyberway.cdt/bin/cyberway-abidiff /opt/cyberway.contracts/cyber.domain/cyber.domain.abi ./cyber.domain/cyber.domain.abi \
+    && echo "abidiff check passed"
 
 FROM ubuntu:18.04
 ARG version=unknown

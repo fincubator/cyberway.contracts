@@ -2,6 +2,7 @@
 
 #include "config.hpp"
 #include <eosio/dispatcher.hpp>
+#include <cyber.token/cyber.token.hpp>
 
 template<typename T, typename... Args>
 bool dispatch_with_transfer_helper( eosio::name self, eosio::name code, void (T::*func)(Args...) ) {
@@ -50,19 +51,14 @@ extern "C" { \
    } \
 } \
 
+#define ON_SIMPLE_TRANSFER(TOKEN) [[eosio::on_notify(TOKEN "::transfer")]]
 
-#define DISPATCH_WITH_UNSTAKING(TYPE, STAKE, WITHDRAW, PROVIDE, MEMBERS) \
-extern "C" { \
-   void apply(uint64_t receiver, uint64_t code, uint64_t action) { \
-        if (code == receiver) { \
-            switch (action) { \
-                EOSIO_DISPATCH_HELPER(TYPE, MEMBERS) \
-            } \
-        } else if (code == STAKE.value && action == "withdraw"_n.value) { \
-            eosio::execute_action(eosio::name(receiver), eosio::name(code), &TYPE::WITHDRAW); \
-        } else if (code == STAKE.value && action == "provide"_n.value) { \
-            eosio::execute_action(eosio::name(receiver), eosio::name(code), &TYPE::PROVIDE); \
-        } \
+#define ON_BULK_TRANSFER(TOKEN) [[eosio::on_notify(TOKEN "::bulktransfer")]]
+
+#define ON_TRANSFER(TOKEN, ON_TRANSFER_HANDLER) \
+   ON_BULK_TRANSFER(TOKEN) void on_bulk_transfer(name from, std::vector<eosio::token::recipient> recipients) { \
+      for (auto& recipient : recipients) { \
+         ON_TRANSFER_HANDLER(from, recipient.to, recipient.quantity, recipient.memo); \
+      } \
    } \
-} \
-
+   ON_SIMPLE_TRANSFER(TOKEN)

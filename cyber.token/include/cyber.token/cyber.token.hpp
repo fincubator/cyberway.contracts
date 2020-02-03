@@ -101,14 +101,14 @@ namespace eosio {
          }
 
       private:
-         struct [[eosio::table]] account {
+         struct account {
             asset    balance;
             asset    payments;
 
             uint64_t primary_key()const { return balance.symbol.code().raw(); }
          };
 
-         struct [[eosio::table]] currency_stats {
+         struct [[eosio::event("currency")]] currency_stats {
             asset    supply;
             asset    max_supply;
             name     issuer;
@@ -116,14 +116,16 @@ namespace eosio {
             uint64_t primary_key()const { return supply.symbol.code().raw(); }
          };
 
-         struct balance_event {
+         struct [[eosio::event]] balance_event {
             name     account;
             asset    balance;
             asset    payments;
          };
 
-         typedef eosio::multi_index< "accounts"_n, account > accounts;
-         typedef eosio::multi_index< "stat"_n, currency_stats > stats;
+         using accounts [[eosio::order("balance._sym")]] =
+            eosio::multi_index<"accounts"_n, account>;
+         using stats [[using eosio: order("supply._sym"), scope_type("symbol_code")]] =
+            eosio::multi_index<"stat"_n, currency_stats>;
 
          void sub_balance( name owner, asset value );
          void add_balance( name owner, asset value, name ram_payer );

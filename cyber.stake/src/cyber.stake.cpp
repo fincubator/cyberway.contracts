@@ -327,22 +327,28 @@ void stake::setkey(name account, symbol_code token_code, std::optional<public_ke
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
     eosio::check(!agent->proxy_level, account.to_string() + " is not a candidate");
-    
-    if (actual_signing_key != public_key{}) {
-        require_auth(account);
-        agent->check_own_staked(_self, min_own_staked_for_election);
-    }
-    else if (agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
-        require_auth(account);
-    }
+    bool has_self_auth = has_auth(_self);
     
     candidates candidates_table(table_owner, table_owner.value);
     auto cands_idx = candidates_table.get_index<"bykey"_n>();
     auto cand = cands_idx.find(std::make_tuple(token_code, account));
     eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
-    cands_idx.modify(cand, name(), [actual_signing_key](auto& a) {
+    
+    if (actual_signing_key != public_key{}) {
+        require_auth(account);
+        eosio::check(time_point_sec(eosio::current_time_point()) >= cand->latest_pick, "action is temporarily unavailable");
+        agent->check_own_staked(_self, min_own_staked_for_election);
+    }
+    else if (!has_self_auth && agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
+        require_auth(account);
+    }
+    
+    cands_idx.modify(cand, name(), [actual_signing_key, has_self_auth](auto& a) {
         a.signing_key = actual_signing_key;
         a.enabled = actual_signing_key != public_key{};
+        if (has_self_auth && !a.enabled) {
+            a.latest_pick = eosio::current_time_point() + seconds(config::key_recovery_delay);
+        }
     });
 }
 
@@ -370,7 +376,10 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     candidates candidates_table(table_owner, table_owner.value);
     auto cands_idx = candidates_table.get_index<"bykey"_n>();
     if (!agent->proxy_level && level) {
-        cands_idx.erase(cands_idx.find(std::make_tuple(token_code, account)));
+        auto cand = cands_idx.find(std::make_tuple(token_code, account));
+        eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
+        eosio::check(time_point_sec(eosio::current_time_point()) >= cand->latest_pick, "action is temporarily unavailable");
+        cands_idx.erase(cand);
 
         stats stats_table(table_owner, table_owner.value);
         auto stat = stats_table.find(token_code.raw());

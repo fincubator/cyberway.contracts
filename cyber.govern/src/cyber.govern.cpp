@@ -34,6 +34,7 @@ void govern::onblock(name producer) {
     balances balances_table(_self, _self.value);
     
     obliged_producers obliged_prods_table(_self, _self.value);
+    omissions omissions_table(_self, _self.value);
     unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
     
     if (producer != config::internal_name && s.block_num != 1) {
@@ -46,6 +47,10 @@ void govern::onblock(name producer) {
         auto p = obliged_prods_table.find(producer.value);
         if (p != obliged_prods_table.end()) {
             obliged_prods_table.erase(p);
+        }
+        auto o = omissions_table.find(producer.value);
+        if (o != omissions_table.end()) {
+            omissions_table.erase(o);
         }
         auto b = balances_table.find(producer.value);
         if (b != balances_table.end()) {
@@ -139,21 +144,29 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
 
 void govern::propose_producers(structures::state_info& s) {
     s.last_propose_block_num = s.block_num;
-    if ((s.required_producers_num < max_producers_num) && (eosio::current_time_point() - s.last_schedule_increase).to_seconds() >= schedule_increase_min_delay) {
-        auto votes_total = stake::get_votes_sum(system_token.code());
-        auto votes_top   = stake::get_votes_sum(system_token.code(), s.required_producers_num - active_reserve_producers_num);
+    
+    auto sched_state = schedule_resize_singleton(_self, _self.value);
+    auto sched = sched_state.get_or_default(structures::schedule_resize_info { .last_step = eosio::current_time_point() });
+    
+    if ((eosio::current_time_point() - sched.last_step).to_seconds() >= schedule_resize_min_delay) {
+        s.required_producers_num += sched.shift;
+        s.required_producers_num = std::min(std::max(s.required_producers_num, min_producers_num), max_producers_num);
         
-        if (votes_top < safe_pct(votes_total, schedule_increase_blocking_votes_pct)) {
-            s.required_producers_num += 1;
-            s.last_schedule_increase = eosio::current_time_point();
-        }
+        sched.last_step = eosio::current_time_point();
     }
+    sched_state.set(sched, _self);
     
     auto new_producers = stake::get_top(system_token.code(), s.required_producers_num - active_reserve_producers_num, active_reserve_producers_num);
     auto new_producers_num = new_producers.size();
-    if (new_producers_num < s.last_producers_num) {
+    
+    auto min_new_producers_num = s.last_producers_num;
+    if (sched.shift < 0) {
+        min_new_producers_num -= std::min<decltype(min_new_producers_num)>(min_new_producers_num, std::abs(sched.shift));
+    }
+    if (new_producers_num < min_new_producers_num) {
         return;
     }
+    
     std::vector<eosio::producer_key> schedule;
     schedule.reserve(new_producers_num);
     for (const auto& t : new_producers) {
@@ -196,6 +209,16 @@ void govern::setactprods(std::vector<name> pending_active_producers) {
     pending_prods_table.set(prods, _self);
 }
 
+void govern::setshift(int8_t shift) {
+    eosio::check(schedule_size_shift_min <= shift && shift <= schedule_size_shift_max, "incorrect shift");
+    require_auth(producers_name);
+    auto sched_state = schedule_resize_singleton(_self, _self.value);
+    auto sched = sched_state.get_or_default(structures::schedule_resize_info { .last_step = eosio::current_time_point() });
+    eosio::check(shift != sched.shift, "the shift has not changed");
+    sched.shift = shift;
+    sched_state.set(sched, _self);
+}
+
 void govern::maybe_promote_producers() {
     pending_producers pending_prods_table(_self, _self.value);
     auto prods = pending_prods_table.get_or_default(structures::pending_producers_info{});
@@ -203,15 +226,38 @@ void govern::maybe_promote_producers() {
         return;
     }
     obliged_producers obliged_prods_table(_self, _self.value);
+    omissions omissions_table(_self, _self.value);
     unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
     
     for (auto i = obliged_prods_table.begin(); i != obliged_prods_table.end();) {
+        auto o = omissions_table.find(i->account.value);
+        if (o != omissions_table.end()) {
+            omissions_table.modify(o, name(), [&](auto& o) { o.count += 1; } );
+        }
+        else {
+            omissions_table.emplace(_self, [&](auto& o) { o = structures::omission {
+                .account = i->account,
+                .count = 1
+            };});
+        }
+        
         auto b = unconfirmed_balances_table.find(i->account.value);
         if (b != unconfirmed_balances_table.end()) {
             eosio::event(_self, "burnreward"_n, *b).send();
             unconfirmed_balances_table.erase(b);
         }
         i = obliged_prods_table.erase(i);
+    }
+    symbol_code token_code = system_token.code();
+    
+    auto omissions_idx = omissions_table.get_index<"bycount"_n>();
+    auto omission_itr = omissions_idx.lower_bound(std::numeric_limits<decltype(structures::omission::count)>::max());
+    if (omission_itr != omissions_idx.end() && omission_itr->count >= config::omission_limit) {
+        if (cyber::stake::candidate_exists(omission_itr->account, token_code)) {
+            INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::stake_name, config::active_name},
+                {omission_itr->account, token_code, public_key{}});
+        }
+        omissions_idx.erase(omission_itr);
     }
     
     for (const auto& acc : prods.accounts) {

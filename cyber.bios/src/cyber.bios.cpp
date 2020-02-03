@@ -3,7 +3,6 @@
 #include <cyber.govern/cyber.govern.hpp>
 #include <cyber.token/cyber.token.hpp>
 #include <cyber.stake/cyber.stake.hpp>
-#include <common/dispatchers.hpp>
 
 #include <eosio/system.hpp>
 
@@ -178,9 +177,3 @@ void bios::on_stake_provide(name provider_name, name consumer_name, asset quanti
 }
 
 }
-
-DISPATCH_WITH_UNSTAKING(cyber::bios, cyber::config::stake_name, on_stake_withdraw, on_stake_provide,
-    (newaccount)(setprods)(setparams)(reqauth)(setabi)(setcode)(onblock)(checkwin)(bidname)(bidrefund)
-)
-
-

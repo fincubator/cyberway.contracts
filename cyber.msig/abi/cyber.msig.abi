@@ -220,6 +220,10 @@
                 {
                     "name": "trx",
                     "type": "transaction"
+                },
+                {
+                    "name": "description",
+                    "type": "string$"
                 }
             ]
         },
@@ -379,6 +383,7 @@
             ]
         }
     ],
+    "events": [],
     "variants": [],
     "abi_extensions": []
 }

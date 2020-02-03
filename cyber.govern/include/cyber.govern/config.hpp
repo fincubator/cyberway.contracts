@@ -11,11 +11,14 @@ static const auto update_emission_per_block_interval = 997;
 
 static const auto rewarded_for_votes_limit_displ = 50;
 
-static const auto schedule_increase_min_delay = 60 * 60 * 24 * 14;
 static const auto schedule_increase_blocking_votes_pct = 90 * _1percent;
 
 static constexpr uint16_t min_producers_num = 21;
 static constexpr uint16_t max_producers_num = 101;
+
+static const auto schedule_resize_min_delay = 60 * 60 * 24 * 14;
+static constexpr  int8_t schedule_size_shift_min = -1;
+static constexpr  int8_t schedule_size_shift_max = 1;
 
 static constexpr uint16_t active_reserve_producers_num = 1;
 

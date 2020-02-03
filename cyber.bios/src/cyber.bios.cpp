@@ -1,7 +1,6 @@
 #include <cyber.bios/cyber.bios.hpp>
 #include <cyber.bios/config.hpp>
 #include <cyber.govern/cyber.govern.hpp>
-#include <cyber.token/cyber.token.hpp>
 #include <cyber.stake/cyber.stake.hpp>
 
 #include <eosio/system.hpp>

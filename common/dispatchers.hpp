@@ -2,7 +2,6 @@
 
 #include "config.hpp"
 #include <eosio/dispatcher.hpp>
-#include <cyber.token/cyber.token.hpp>
 
 template<typename T, typename... Args>
 bool dispatch_with_transfer_helper( eosio::name self, eosio::name code, void (T::*func)(Args...) ) {

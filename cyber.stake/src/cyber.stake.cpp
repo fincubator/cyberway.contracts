@@ -9,7 +9,6 @@
 #include <eosio/system.hpp>
 #include <algorithm>
 #include <cyber.stake/cyber.stake.hpp>
-#include <cyber.token/cyber.token.hpp>
 #include <common/parameter_ops.hpp>
 
 namespace cyber {

@@ -7,6 +7,7 @@
 #include <eosio/producer_schedule.hpp>
 #include <eosio/singleton.hpp>
 #include <eosio/time.hpp>
+#include <cyber.token/cyber.token.hpp>
 #include <common/dispatchers.hpp>
 
 namespace cyber {

@@ -12,6 +12,7 @@
 #include <tuple>
 #include <eosio/privileged.hpp>
 #include <common/util.hpp>
+#include <cyber.token/cyber.token.hpp>
 #include <common/dispatchers.hpp>
 
 #define table_owner name()

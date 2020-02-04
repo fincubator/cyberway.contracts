@@ -1,14 +1,15 @@
 steps:
   - label: ":docker: build docker image"
-    command: ".buildkite/steps/build-image.sh"
-
+    command: 
+        - ".buildkite/steps/build-image.sh"
+        - ".buildkite/steps/upload-image.sh"
   - wait
 
   - label: ":cop::skin-tone-2: deploy check"
     command: ".buildkite/steps/deploy-test.sh"
     timeout: 20
 
-  - label: ":floppy_disk: upload image"
+  - label: ":floppy-disk: publish image"
     command: ".buildkite/steps/publish-image.sh"
     branches: "master develop ci-* v*.*.*"
 

@@ -4,7 +4,6 @@
  */
 
 #include <cyber.incomereject/cyber.incomereject.hpp>
-#include <cyber.token/cyber.token.hpp>
 
 namespace eosio {
 

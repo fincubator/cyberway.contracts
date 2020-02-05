@@ -6,6 +6,7 @@
 
 #include <eosio/eosio.hpp>
 #include <eosio/asset.hpp>
+#include <cyber.token/cyber.token.hpp>
 #include <common/dispatchers.hpp>
 
 namespace eosio {

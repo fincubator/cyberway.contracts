@@ -44,7 +44,7 @@ struct structures {
         std::vector<name> accounts;
     };
     
-    struct [[eosio::table]] omission {
+    struct omission_struct {
         name account;
         uint16_t count;
         uint64_t primary_key()const { return account.value; }
@@ -59,9 +59,8 @@ struct structures {
     using obliged_producers [[eosio::order("account","asc")]] = eosio::multi_index<"obligedprod"_n, structures::producer_struct>;
     using pending_producers [[eosio::order("id","asc")]] = eosio::singleton<"pendingprods"_n, structures::pending_producers_info>;
     
-    using omission_id_index = eosio::indexed_by<"omissionid"_n, eosio::const_mem_fun<structures::omission, uint64_t, &structures::omission::primary_key> >;
-    using omission_count_index = eosio::indexed_by<"bycount"_n, eosio::const_mem_fun<structures::omission, uint16_t, &structures::omission::by_count> >;
-    using omissions = eosio::multi_index<"omission"_n, structures::omission, omission_id_index, omission_count_index>;
+    using omission_count_index [[using eosio: order("count","desc"), non_unique]] = eosio::indexed_by<"bycount"_n, eosio::const_mem_fun<structures::omission_struct, uint16_t, &structures::omission_struct::by_count> >;
+    using omissions [[eosio::order("account","asc")]] = eosio::multi_index<"omission"_n, structures::omission_struct, omission_count_index>;
     
     void maybe_promote_producers();
     void propose_producers(structures::state_info& s);

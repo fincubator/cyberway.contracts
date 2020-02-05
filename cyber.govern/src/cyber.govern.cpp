@@ -235,7 +235,7 @@ void govern::maybe_promote_producers() {
             omissions_table.modify(o, name(), [&](auto& o) { o.count += 1; } );
         }
         else {
-            omissions_table.emplace(_self, [&](auto& o) { o = structures::omission {
+            omissions_table.emplace(_self, [&](auto& o) { o = structures::omission_struct {
                 .account = i->account,
                 .count = 1
             };});
@@ -251,7 +251,7 @@ void govern::maybe_promote_producers() {
     symbol_code token_code = system_token.code();
     
     auto omissions_idx = omissions_table.get_index<"bycount"_n>();
-    auto omission_itr = omissions_idx.lower_bound(std::numeric_limits<decltype(structures::omission::count)>::max());
+    auto omission_itr = omissions_idx.lower_bound(std::numeric_limits<decltype(structures::omission_struct::count)>::max());
     if (omission_itr != omissions_idx.end() && omission_itr->count >= config::omission_limit) {
         if (cyber::stake::candidate_exists(omission_itr->account, token_code)) {
             INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::stake_name, config::active_name},

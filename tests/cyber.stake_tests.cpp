@@ -207,6 +207,10 @@ public:
         static bool is_block_res_limit_err_mssg(const std::string& arg) {
             return arg.find("Block has insufficient resources") != std::string::npos;
         }
+        const string no_params_changed       = amsg("no params changed");
+        const string autorc_disabled         = amsg("custom auto recall mode is disabled for this token");
+        const string autorc_already_disabled = amsg("custom auto recall mode is already disabled for this token");
+        const string autorc_already_enabled  = amsg("custom auto recall mode is already enabled for this token");
     } err;
 };
 
@@ -1263,6 +1267,74 @@ BOOST_FIXTURE_TEST_CASE(reset_key_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.setminstaked(_alice, token._symbol.to_symbol_code(), min_for_election - 1, true));
     BOOST_CHECK_EQUAL(success(), stake.setkey(_alice, token._symbol.to_symbol_code(), true, _bob));
     BOOST_CHECK(!stake.get_candidate(_alice, token._symbol)["enabled"].as<bool>());
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(custom_autorc_mode_test, cyber_stake_tester) try {
+    BOOST_TEST_MESSAGE("custom autorc mode test");
+    int64_t min_for_election = 1000;
+    int64_t stake_amount = 5000;
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, token.from_amount(100500)));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _alice, token.from_amount(stake_amount), ""));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _bob,   token.from_amount(stake_amount), ""));
+    BOOST_CHECK_EQUAL(success(), token.issue(_issuer, _carol, token.from_amount(stake_amount), ""));
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, {30, 10, 3, 1}, 100500, min_for_election));
+    int64_t alice_stake = min_for_election + 1;
+    BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _code, token.from_amount(alice_stake)));
+    BOOST_CHECK_EQUAL(success(), stake.setminstaked(_alice, token._symbol.to_symbol_code(), alice_stake));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_alice, token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK_EQUAL(success(), stake.setproxyfee(_alice, token._symbol.to_symbol_code(), 2000));
+    
+    BOOST_CHECK_EQUAL(success(), token.transfer(_bob,   _code, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), token.transfer(_carol, _code, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob,   _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_carol, _alice, token.from_amount(stake_amount)));
+    
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"], stake_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], stake_amount);
+    
+    BOOST_CHECK_EQUAL(err.autorc_disabled, stake.setautorc(_bob, true));
+    BOOST_CHECK_EQUAL(err.autorc_already_disabled, stake.setautorcmode(_issuer, false));
+    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, true));
+    produce_block();
+    BOOST_CHECK_EQUAL(err.autorc_already_enabled, stake.setautorcmode(_issuer, true));
+    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, false));
+    BOOST_CHECK_EQUAL(err.autorc_disabled, stake.setautorc(_bob, true));
+    produce_block();
+    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, true));
+    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, false, false));
+    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, false));
+    BOOST_CHECK_EQUAL(success(), stake.setautorc(_bob, true, false));
+    produce_block();
+    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, true, false));
+    BOOST_CHECK_EQUAL(success(), stake.setautorc(_carol, false, true));
+    
+    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_carol, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"], stake_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], stake_amount);
+    produce_block();
+    
+    BOOST_CHECK_EQUAL(success(), stake.setproxyfee(_alice, token._symbol.to_symbol_code(), 2001));
+    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_carol, token._symbol.to_symbol_code()));
+    
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"], 0);
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["balance"], stake_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], stake_amount);
+    
+    BOOST_CHECK_EQUAL(success(), stake.delegatevote(_bob,   _alice, token.from_amount(stake_amount)));
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"], stake_amount);
+    produce_block();
+    
+    BOOST_CHECK_EQUAL(err.min_for_election_violated(), stake.setminstaked(_alice, token._symbol.to_symbol_code(), min_for_election - 1));
+    BOOST_CHECK_EQUAL(success(), stake.setminstaked(_alice, token._symbol.to_symbol_code(), min_for_election));
+    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_bob, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.updatefunds(_carol, token._symbol.to_symbol_code()));
+    
+    BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"], stake_amount);
+    BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], 0);
+    BOOST_CHECK_EQUAL(stake.get_agent(_carol,   token._symbol)["balance"], stake_amount);
+    produce_block();
 } FC_LOG_AND_RETHROW()
 
 BOOST_AUTO_TEST_SUITE_END() // agent_updates

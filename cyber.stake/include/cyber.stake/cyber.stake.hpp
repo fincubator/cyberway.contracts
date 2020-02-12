@@ -99,9 +99,19 @@ struct structures {
                     "min_own_staked can't be less than min_own_staked_for_election for users with an ultimate level");
                 eosio::check(get_own_funds() >= min_own_staked, "own staked funds can't be less than min_own_staked");
             }
-
         }
      };
+     
+    struct auto_recall {
+        uint64_t id;
+        symbol_code token_code;
+        name account;
+        bool break_fee_enabled = false;
+        bool break_min_stake_enabled = false;
+        uint64_t primary_key()const { return id; }
+        using key_t = std::tuple<symbol_code, name>;
+        key_t by_key()const { return std::make_tuple(token_code, account); }
+    };
 
     struct grant {
         uint64_t id;
@@ -167,6 +177,10 @@ struct structures {
     using agent_key_index = eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::agent, structures::agent::key_t, &structures::agent::by_key> >;
     using agents = eosio::multi_index<"stake.agent"_n, structures::agent, agent_id_index, agent_key_index>;
     using agents_idx_t = decltype(agents(table_owner, table_owner.value).get_index<"bykey"_n>());
+
+    using autorc_id_index = eosio::indexed_by<"autorcid"_n, eosio::const_mem_fun<structures::auto_recall, uint64_t, &structures::auto_recall::primary_key> >;
+    using autorc_key_index = eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::auto_recall, structures::auto_recall::key_t, &structures::auto_recall::by_key> >;
+    using autorcs = eosio::multi_index<"stake.autorc"_n, structures::auto_recall, autorc_id_index, autorc_key_index>;
 
     using candidate_id_index = eosio::indexed_by<"candidateid"_n, eosio::const_mem_fun<structures::candidate, uint64_t, &structures::candidate::primary_key> >;
     using candidate_key_index = eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::candidate, structures::candidate::key_t, &structures::candidate::by_key> >;
@@ -377,5 +391,8 @@ public:
     [[eosio::action]] void recalluse(name grantor_name, name recipient_name, asset quantity);
 
     [[eosio::action]] void claim(name grantor_name, name recipient_name, symbol_code token_code);
+    
+    [[eosio::action]] void setautorc(name account, std::optional<symbol_code> token_code, std::optional<bool> break_fee_enabled, std::optional<bool> break_min_stake_enabled);
+    [[eosio::action]] void setautorcmode(std::optional<symbol_code> token_code, bool enabled);
 };
 } /// namespace cyber

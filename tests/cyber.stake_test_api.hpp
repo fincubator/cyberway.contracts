@@ -203,6 +203,24 @@ public:
             ("token_code", token_code)
         );
     }
+    
+    action_result setautorc(account_name account,
+            std::optional<bool> break_fee_enabled = std::optional<bool>(), 
+            std::optional<bool> break_min_stake_enabled = std::optional<bool>(),
+            std::optional<symbol_code> token_code = std::optional<symbol_code>()) {
+        
+        auto a = args()("account", account);
+        if (token_code) { a("token_code", *token_code); }
+        if (break_fee_enabled) { a("break_fee_enabled", *break_fee_enabled); }
+        if (break_min_stake_enabled) { a("break_min_stake_enabled", *break_min_stake_enabled); }
+        return push(N(setautorc), account, a);
+    }
+    
+    action_result setautorcmode(account_name issuer, bool enabled, std::optional<symbol_code> token_code = std::optional<symbol_code>()) {
+        auto a = args()("enabled", enabled);
+        if (token_code) { a("token_code", *token_code); }
+        return push(N(setautorcmode), issuer, a);
+    }
 
     action_result register_candidate(account_name account, symbol_code token_code, bool need_to_open = true) {
         if (need_to_open) {

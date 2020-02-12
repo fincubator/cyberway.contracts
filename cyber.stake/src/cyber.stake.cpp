@@ -675,7 +675,73 @@ void stake::claim(name grantor_name, name recipient_name, symbol_code token_code
 
     agents_idx.modify(grantor, name(), [&](auto& a) { a.provided -= payout_itr->amount; });
     payouts_index.erase(payout_itr);
+}
 
+#define SET_PARAM(PARAM) if (PARAM && (p.PARAM != *PARAM)) { p.PARAM = *PARAM; _empty = false; }
+
+void stake::setautorc(name account, std::optional<symbol_code> token_code, std::optional<bool> break_fee_enabled, std::optional<bool> break_min_stake_enabled) {
+    require_auth(account);
+    auto actual_token_code = token_code.value_or(config::system_token.code());
+    staking_exists(actual_token_code);
+    
+    agents agents_table(table_owner, table_owner.value);
+    auto agents_idx = agents_table.get_index<"bykey"_n>();
+    get_agent_itr(actual_token_code, agents_idx, account); //checking that the agent exists
+    
+    autorcs autorcs_table(table_owner, table_owner.value);
+    auto autorcs_idx = autorcs_table.get_index<"bykey"_n>();
+    autorcs_idx.get(std::make_tuple(actual_token_code, name()), "custom auto recall mode is disabled for this token");
+    
+    if (break_fee_enabled && !*break_fee_enabled && break_min_stake_enabled && !*break_min_stake_enabled) {
+        auto autorc_itr = autorcs_idx.find(std::make_tuple(actual_token_code, account));
+        eosio::check(autorc_itr != autorcs_idx.end(), "no params changed");
+        autorcs_idx.erase(autorc_itr);
+    }
+    else {
+        auto autorc_itr = autorcs_idx.find(std::make_tuple(actual_token_code, account));
+        if (autorc_itr != autorcs_idx.end()) {
+            autorcs_idx.modify(autorc_itr, account, [&](auto& p) {
+                bool _empty = true;
+                SET_PARAM(break_fee_enabled);
+                SET_PARAM(break_min_stake_enabled);
+                eosio::check(!_empty, "no params changed");
+            });
+        }
+        else {
+            eosio::check((break_fee_enabled && *break_fee_enabled) || (break_min_stake_enabled && *break_min_stake_enabled), "no params changed");
+            autorcs_table.emplace(account, [&](auto& p) { p = {
+                .id = autorcs_table.available_primary_key(),
+                .token_code = actual_token_code,
+                .account = account,
+                .break_fee_enabled = (break_fee_enabled && *break_fee_enabled),
+                .break_min_stake_enabled = (break_min_stake_enabled && *break_min_stake_enabled)
+            };});
+        }
+    }
+}
+#undef SET_PARAM
+
+void stake::setautorcmode(std::optional<symbol_code> token_code, bool enabled) {
+    auto actual_token_code = token_code.value_or(config::system_token.code());
+    auto issuer = eosio::token::get_issuer(config::token_name, actual_token_code);
+    require_auth(issuer);
+    staking_exists(actual_token_code);
+    
+    autorcs autorcs_table(table_owner, table_owner.value);
+    auto autorcs_idx = autorcs_table.get_index<"bykey"_n>();
+    auto autorc_itr = autorcs_idx.find(std::make_tuple(actual_token_code, name())); 
+    if (enabled) {
+        eosio::check(autorc_itr == autorcs_idx.end(), "custom auto recall mode is already enabled for this token");
+        autorcs_table.emplace(issuer, [&](auto& p) { p = {
+            .id = autorcs_table.available_primary_key(),
+            .token_code = actual_token_code,
+            .account = name()
+        };});
+    }
+    else {
+        eosio::check(autorc_itr != autorcs_idx.end(), "custom auto recall mode is already disabled for this token");
+        autorcs_idx.erase(autorc_itr);
+    }
 }
 
 } /// namespace cyber

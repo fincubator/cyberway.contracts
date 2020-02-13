@@ -34,7 +34,7 @@ struct structures {
         uint64_t id;
         symbol_code token_code;
         name account;
-        time_point_sec latest_pick; //note that the field is also used to delay key recovery
+        time_point_sec latest_pick;
         int64_t votes = 0;
         int64_t priority = std::numeric_limits<int64_t>::max();
         public_key signing_key = {};
@@ -161,6 +161,17 @@ struct structures {
         using key_t = std::tuple<symbol_code, name, name>;
         key_t by_key()const { return std::make_tuple(token_code, grantor_name, recipient_name); }
     };
+
+    struct suspense {
+        uint64_t id;
+        symbol_code token_code;
+        name account;
+        name action_name;
+        time_point_sec expiration_time;
+        uint64_t primary_key()const { return id; }
+        using key_t = std::tuple<symbol_code, name, name>;
+        key_t by_key()const { return std::make_tuple(token_code, account, action_name); }
+    };
 };
 
     using agent_id_index = eosio::indexed_by<"agentid"_n, eosio::const_mem_fun<structures::agent, uint64_t, &structures::agent::primary_key> >;
@@ -195,6 +206,11 @@ struct structures {
         eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::prov_payout_struct, structures::prov_payout_struct::key_t, &structures::prov_payout_struct::by_key> >;
     using prov_payouts [[eosio::order("id")]] =
         eosio::multi_index<"provpayout"_n, structures::prov_payout_struct, prov_payout_acc_index>;
+
+    using susp_key_index [[using eosio: order("token_code"), order("account"), order("action_name")]] = 
+        eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::suspense, structures::suspense::key_t, &structures::suspense::by_key> >;
+    using susps [[eosio::order("id")]] =
+        eosio::multi_index<"suspense"_n, structures::suspense, susp_key_index>;
 
     void update_stake_proxied(symbol_code token_code, name agent_name) {
         eosio::update_stake_proxied(token_code, agent_name, true);

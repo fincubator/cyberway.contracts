@@ -317,8 +317,11 @@ BOOST_FIXTURE_TEST_CASE(recovery_delay, cyber_govern_tester) try {
     }
     BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
     BOOST_CHECK_EQUAL(err.temp_unavailable, stake.setkey(_bob, token._symbol.to_symbol_code(), false));
-    BOOST_CHECK_EQUAL(err.temp_unavailable, stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
-    produce_block(fc::seconds(cfg::key_recovery_delay));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));
+    BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 0));
+    BOOST_CHECK_EQUAL(err.temp_unavailable, stake.setkey(_bob, token._symbol.to_symbol_code(), false));
+    produce_block();
+    produce_block(fc::seconds(cfg::key_recovery_delay) - fc::milliseconds(config::block_interval_ms));
     BOOST_CHECK_EQUAL(success(), stake.setkey(_bob, token._symbol.to_symbol_code(), false));
     BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), get_public_key(_bob, "active"));
     BOOST_CHECK_EQUAL(success(), stake.setproxylvl(_bob, token._symbol.to_symbol_code(), 1));

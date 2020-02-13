@@ -254,7 +254,7 @@ void govern::maybe_promote_producers() {
     auto omission_itr = omissions_idx.lower_bound(std::numeric_limits<decltype(structures::omission_struct::count)>::max());
     if (omission_itr != omissions_idx.end() && omission_itr->count >= config::omission_limit) {
         if (cyber::stake::candidate_exists(omission_itr->account, token_code)) {
-            INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::stake_name, config::active_name},
+            INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::issuer_name, config::active_name},
                 {omission_itr->account, token_code, public_key{}});
         }
         omissions_idx.erase(omission_itr);

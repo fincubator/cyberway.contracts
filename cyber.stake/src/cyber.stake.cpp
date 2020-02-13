@@ -326,29 +326,55 @@ void stake::setkey(name account, symbol_code token_code, std::optional<public_ke
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
     eosio::check(!agent->proxy_level, account.to_string() + " is not a candidate");
-    bool has_self_auth = has_auth(_self);
+    
+    auto issuer = eosio::token::get_issuer(config::token_name, token_code);
+    bool has_issuer_auth = has_auth(issuer);
     
     candidates candidates_table(table_owner, table_owner.value);
     auto cands_idx = candidates_table.get_index<"bykey"_n>();
     auto cand = cands_idx.find(std::make_tuple(token_code, account));
     eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
     
+    susps susps_table(_self, _self.value);
+    auto susps_idx = susps_table.get_index<"bykey"_n>();
+    auto action_name = "setkey"_n;
+    
     if (actual_signing_key != public_key{}) {
         require_auth(account);
-        eosio::check(time_point_sec(eosio::current_time_point()) >= cand->latest_pick, "action is temporarily unavailable");
+        auto susps_itr = susps_idx.find(std::make_tuple(token_code, account, action_name));
+        if (susps_itr != susps_idx.end()) {
+            eosio::check(time_point_sec(eosio::current_time_point()) >= susps_itr->expiration_time, "action is temporarily unavailable");
+            susps_idx.erase(susps_itr);
+        }
+        
         agent->check_own_staked(_self, min_own_staked_for_election);
     }
-    else if (!has_self_auth && agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
+    else if (!has_issuer_auth && agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
         require_auth(account);
     }
     
-    cands_idx.modify(cand, name(), [actual_signing_key, has_self_auth](auto& a) {
+    cands_idx.modify(cand, name(), [actual_signing_key](auto& a) {
         a.signing_key = actual_signing_key;
         a.enabled = actual_signing_key != public_key{};
-        if (has_self_auth && !a.enabled) {
-            a.latest_pick = eosio::current_time_point() + seconds(config::key_recovery_delay);
-        }
     });
+    
+    if (has_issuer_auth && !cand->enabled) {
+        auto susps_itr = susps_idx.find(std::make_tuple(token_code, account, action_name));
+        if (susps_itr != susps_idx.end()) {
+            susps_idx.modify(susps_itr, issuer, [](auto& s) {
+                s.expiration_time = std::max(s.expiration_time, time_point_sec(eosio::current_time_point() + seconds(config::key_recovery_delay))); 
+            });
+        }
+        else {
+            susps_table.emplace(issuer, [&]( auto &s ) { s = structures::suspense {
+                .id = susps_table.available_primary_key(),
+                .token_code = token_code,
+                .account = account,
+                .action_name = action_name,
+                .expiration_time = eosio::current_time_point() + seconds(config::key_recovery_delay)
+            };});
+        }
+    }
 }
 
 void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
@@ -377,7 +403,6 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     if (!agent->proxy_level && level) {
         auto cand = cands_idx.find(std::make_tuple(token_code, account));
         eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
-        eosio::check(time_point_sec(eosio::current_time_point()) >= cand->latest_pick, "action is temporarily unavailable");
         cands_idx.erase(cand);
 
         stats stats_table(table_owner, table_owner.value);
@@ -401,7 +426,7 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
         a.proxy_level = level;
     });
     agent->check_own_staked(_self, param.min_own_staked_for_election);
-} 
+}
  
 void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window, int64_t min_own_staked_for_election)
 {

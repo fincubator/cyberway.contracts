@@ -1292,21 +1292,20 @@ BOOST_FIXTURE_TEST_CASE(custom_autorc_mode_test, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_bob,   token._symbol)["proxied"], stake_amount);
     BOOST_CHECK_EQUAL(stake.get_agent(_carol, token._symbol)["proxied"], stake_amount);
     
-    BOOST_CHECK_EQUAL(err.autorc_disabled, stake.setautorc(_bob, true));
-    BOOST_CHECK_EQUAL(err.autorc_already_disabled, stake.setautorcmode(_issuer, false));
-    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, true));
+    BOOST_CHECK_EQUAL(err.autorc_disabled, stake.setautorc(_bob, token._symbol.to_symbol_code(), true, false));
+    BOOST_CHECK_EQUAL(err.autorc_already_disabled, stake.setautorcmode(_issuer, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, token._symbol.to_symbol_code(), true));
     produce_block();
-    BOOST_CHECK_EQUAL(err.autorc_already_enabled, stake.setautorcmode(_issuer, true));
-    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, false));
-    BOOST_CHECK_EQUAL(err.autorc_disabled, stake.setautorc(_bob, true));
+    BOOST_CHECK_EQUAL(err.autorc_already_enabled, stake.setautorcmode(_issuer, token._symbol.to_symbol_code(), true));
+    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, token._symbol.to_symbol_code(), false));
+    BOOST_CHECK_EQUAL(err.autorc_disabled, stake.setautorc(_bob, token._symbol.to_symbol_code(), true, true));
     produce_block();
-    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, true));
-    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, false, false));
-    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, false));
-    BOOST_CHECK_EQUAL(success(), stake.setautorc(_bob, true, false));
+    BOOST_CHECK_EQUAL(success(), stake.setautorcmode(_issuer, token._symbol.to_symbol_code(), true));
+    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, token._symbol.to_symbol_code(), false, false));
+    BOOST_CHECK_EQUAL(success(), stake.setautorc(_bob, token._symbol.to_symbol_code(), true, false));
     produce_block();
-    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, true, false));
-    BOOST_CHECK_EQUAL(success(), stake.setautorc(_carol, false, true));
+    BOOST_CHECK_EQUAL(err.no_params_changed, stake.setautorc(_bob, token._symbol.to_symbol_code(), true, false));
+    BOOST_CHECK_EQUAL(success(), stake.setautorc(_carol, token._symbol.to_symbol_code(), false, true));
     
     BOOST_CHECK_EQUAL(success(), stake.updatefunds(_bob, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.updatefunds(_carol, token._symbol.to_symbol_code()));

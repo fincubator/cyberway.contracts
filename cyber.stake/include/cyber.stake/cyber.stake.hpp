@@ -392,7 +392,7 @@ public:
 
     [[eosio::action]] void claim(name grantor_name, name recipient_name, symbol_code token_code);
     
-    [[eosio::action]] void setautorc(name account, std::optional<symbol_code> token_code, std::optional<bool> break_fee_enabled, std::optional<bool> break_min_stake_enabled);
-    [[eosio::action]] void setautorcmode(std::optional<symbol_code> token_code, bool enabled);
+    [[eosio::action]] void setautorc(name account, symbol_code token_code, bool break_fee_enabled, bool break_min_stake_enabled);
+    [[eosio::action]] void setautorcmode(symbol_code token_code, bool enabled);
 };
 } /// namespace cyber

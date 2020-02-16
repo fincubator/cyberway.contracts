@@ -211,6 +211,7 @@ struct structures {
         eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::suspense, structures::suspense::key_t, &structures::suspense::by_key> >;
     using susps [[eosio::order("id")]] =
         eosio::multi_index<"suspense"_n, structures::suspense, susp_key_index>;
+    using susps_idx_t = decltype(susps(_self, _self.value).get_index<"bykey"_n>());
 
     void update_stake_proxied(symbol_code token_code, name agent_name) {
         eosio::update_stake_proxied(token_code, agent_name, true);
@@ -254,6 +255,9 @@ struct structures {
     void set_votes(symbol_code token_code, const std::map<name, int64_t>& votes_changes);
 
     void update_provided(name grantor_name, name recipient_name, asset quantity);
+    
+    void check_suspense(susps& susps_table, susps_idx_t& susps_idx, symbol_code token_code, name account, name action_name);
+    void set_suspense(name ram_payer, susps& susps_table, susps_idx_t& susps_idx, symbol_code token_code, name account, name action_name, int delay);
 
 public:
 
@@ -262,8 +266,13 @@ public:
         int64_t votes = 0;
         public_key signing_key = {};
     };
+    
+    static inline uint8_t get_max_level(symbol_code token_code) {
+        params params_table(table_owner, table_owner.value);
+        return params_table.get(token_code.raw(), "no staking for token").max_proxies.size();
+    }
 
-    static inline std::vector<elected_t> get_top(symbol_code token_code, uint16_t elected_num, uint16_t reserve_num, bool strict = true) {
+    static inline std::vector<elected_t> get_top(symbol_code token_code, uint16_t elected_num, uint16_t reserve_num) {
         staking_exists(token_code);
 
         candidates candidates_table(table_owner, table_owner.value);
@@ -275,7 +284,7 @@ public:
             size_t i = 0;
             auto cands_itr = cands_idx.lower_bound(std::make_tuple(token_code, true, maxval, name()));
             while ((cands_itr != cands_idx.end()) && (cands_itr->token_code == token_code) && (i < elected_num)) {
-                if (!strict || (cands_itr->signing_key != public_key{})) {
+                if (cands_itr->signing_key != public_key{}) {
                     ret.emplace_back(elected_t{cands_itr->account, cands_itr->votes, cands_itr->signing_key});
                     ++i;
                 }
@@ -307,7 +316,7 @@ public:
                 }
 
                 if (new_one) {
-                    if (!strict || (cands_itr->signing_key != public_key{})) {
+                    if (cands_itr->signing_key != public_key{}) {
                         ret.emplace_back(elected_t{cands_itr->account, cands_itr->votes, cands_itr->signing_key});
                         ++i;
                     }
@@ -377,6 +386,7 @@ public:
     [[eosio::action]] void setkey(name account, symbol_code token_code, std::optional<public_key> signing_key);
     
     [[eosio::action]] void updatefunds(name account, symbol_code token_code);
+    [[eosio::action]] void suspendcand(name account, symbol_code token_code);
 
     [[eosio::action]] void reward(std::vector<std::pair<name, int64_t> > rewards, symbol sym);
 

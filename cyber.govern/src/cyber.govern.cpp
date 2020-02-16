@@ -99,14 +99,14 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
             {std::vector<std::pair<name, int64_t> >(rewards.begin(), rewards.end()), system_token});
     }
     
-    auto top = stake::get_top(system_token.code(), s.required_producers_num + rewarded_for_votes_limit_displ, 0, false);
+    auto top = stake::get_top(system_token.code(), s.required_producers_num + rewarded_for_votes_limit_displ, 0);
     
     auto actual_elected_num = top.size();
     int64_t votes_sum = 0;
     for (const auto& t : top) {
         votes_sum += t.votes;
     }
-
+    
     auto reward_of_elected = safe_pct(s.funds, config::_100percent - config::workers_reward_pct);
     
     if (!votes_sum || !reward_of_elected) {
@@ -253,11 +253,21 @@ void govern::maybe_promote_producers() {
     auto omissions_idx = omissions_table.get_index<"bycount"_n>();
     auto omission_itr = omissions_idx.lower_bound(std::numeric_limits<decltype(structures::omission_struct::count)>::max());
     if (omission_itr != omissions_idx.end() && omission_itr->count >= config::omission_limit) {
-        if (cyber::stake::candidate_exists(omission_itr->account, token_code)) {
-            INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::issuer_name, config::active_name},
-                {omission_itr->account, token_code, public_key{}});
+        if (omission_itr->resets >= config::resets_limit) {
+            INLINE_ACTION_SENDER(cyber::stake, setproxylvl)(config::stake_name, {config::issuer_name, config::active_name},
+                {omission_itr->account, token_code, stake::get_max_level(token_code)}); // agent cannot disappear
+            omissions_idx.erase(omission_itr);
         }
-        omissions_idx.erase(omission_itr);
+        else {
+            if (cyber::stake::candidate_exists(omission_itr->account, token_code)) {
+                INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::issuer_name, config::active_name},
+                    {omission_itr->account, token_code, public_key{}});
+            }
+            omissions_idx.modify(omission_itr, name(), [&](auto& o) {
+                o.count = 0;
+                o.resets += 1;
+            });
+        }
     }
     
     for (const auto& acc : prods.accounts) {

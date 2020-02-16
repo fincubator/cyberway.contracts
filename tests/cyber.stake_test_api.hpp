@@ -166,6 +166,13 @@ public:
             ("token_code", token_code)
         );
     }
+    
+    action_result suspendcand(account_name account, symbol_code token_code) {
+        return push(N(suspendcand), account, args()
+            ("account", account)
+            ("token_code", token_code)
+        );
+    }
 
     action_result reward(account_name issuer, account_name account, asset quantity) {
         return push(N(reward), issuer, args()

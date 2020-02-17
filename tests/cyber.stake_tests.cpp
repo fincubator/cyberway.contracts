@@ -1271,6 +1271,8 @@ BOOST_FIXTURE_TEST_CASE(reset_key_test, cyber_stake_tester) try {
 
 BOOST_FIXTURE_TEST_CASE(custom_autorc_mode_test, cyber_stake_tester) try {
     BOOST_TEST_MESSAGE("custom autorc mode test");
+    install_contract(config::system_account_name, contracts::bios_wasm(), contracts::bios_abi());
+    produce_block();
     int64_t min_for_election = 1000;
     int64_t stake_amount = 5000;
     BOOST_CHECK_EQUAL(success(), token.create(_issuer, token.from_amount(100500)));

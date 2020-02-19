@@ -47,6 +47,7 @@ struct structures {
     struct omission_struct {
         name account;
         uint16_t count;
+        uint16_t resets = 0;
         uint64_t primary_key()const { return account.value; }
         uint16_t by_count()const { return count; }
     };

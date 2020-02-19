@@ -35,7 +35,7 @@ static constexpr auto block_reward_pct     = 10 * _1percent;
 static constexpr auto workers_reward_pct   = 2222 * _1percent / 100; // not including block reward
 
 static uint16_t omission_limit = 100;
-
+static uint16_t resets_limit = 4;
 }
 
 } // cyber::config

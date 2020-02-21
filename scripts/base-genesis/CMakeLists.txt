@@ -9,6 +9,13 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/genesis-info.json.tmpl ${CMAKE_CURREN
 file(STRINGS ${CMAKE_CURRENT_BINARY_DIR}/genesis.json.tmpl GENESIS_JSON_CONTENT REGEX ^[^\#].*)
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/genesis.json ${GENESIS_JSON_CONTENT})
 
+if(EOSIO_ROOT STREQUAL "" OR NOT EOSIO_ROOT)
+    if(APPLE)
+        set(EOSIO_ROOT "~/opt/eosio")
+    else()
+        set(EOSIO_ROOT "/opt/eosio")
+    endif()
+endif()
 add_custom_target(generate-genesis ALL DEPENDS cyber.bios.wasm cyber.token.wasm cyber.stake.wasm)
 add_custom_command(TARGET generate-genesis POST_BUILD COMMAND ${CMAKE_COMMAND} ARGS -P ${CMAKE_CURRENT_SOURCE_DIR}/create-genesis.cmake ${EOSIO_ROOT})
 

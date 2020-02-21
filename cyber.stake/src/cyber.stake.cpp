@@ -739,4 +739,41 @@ void stake::claim(name grantor_name, name recipient_name, symbol_code token_code
 
 }
 
+void stake::returnlosses() {
+    auto losses_state = losses_singleton(_self, _self.value);
+    eosio::check(!losses_state.exists(), "losses already have been returned");
+
+    agents agents_table(table_owner, table_owner.value);
+    auto agents_idx = agents_table.get_index<"bykey"_n>();
+    auto token_code = eosio::symbol_code("CYBER");
+    int64_t total = 0;
+
+    auto return_loss = [&](const eosio::name account, const int64_t amount) {
+        auto agent = agents_idx.find(std::make_tuple(token_code, account));
+        eosio::check(agent != agents_idx.end(), "agent doesn't exist");
+        agents_idx.modify(agent, eosio::same_payer, [&](auto& a) {
+            a.balance += amount;
+        });
+        total += amount;
+    };
+
+    // account: mike2mike@golos trx: f039154469c34af0fb5f90aed0e383c86304d7e3059a841f8fa52a707d688c64
+    return_loss("dsqy4k5ym3uk"_n, 10);
+
+    // account: ltrack@golos trx: 8f373abe3429bb44e97c26fbf2d4d40dfc71007a7063c31ee3f710eb7a7fbcb8
+    return_loss("ym2imjop4l5n"_n, 16748);
+
+    // account: drugan7@golos trx: 55bb2a8a9540026f7f7a5db96eccc999e85f55a27761f73846b7017a21862f8c
+    return_loss("rzi4tcizzvyw"_n, 3236);
+
+    // account: gunblade trx: 3c54eecfe65722ab5817433ed7cbffbaa847b62ef0a1ce0abab9cc3f83ff96ec
+    return_loss("xt351mrztghr"_n, 826);
+
+    structures::losses s;
+    s.time = eosio::current_time_point();
+    s.token_code = token_code;
+    s.total = total;
+    losses_state.set(s, _self);
+}
+
 } /// namespace cyber

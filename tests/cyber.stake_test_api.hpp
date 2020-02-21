@@ -329,6 +329,10 @@ public:
             ("last_reward", last_reward)
             ("enabled", enabled);
     }
+
+    action_result return_losses(account_name caller) {
+        return push(N(returnlosses), caller, args());
+    }
 };
 
 }} // eosio::testing

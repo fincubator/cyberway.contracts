@@ -7,6 +7,7 @@
 #include <eosio/asset.hpp>
 #include <eosio/eosio.hpp>
 #include <eosio/time.hpp>
+#include <eosio/singleton.hpp>
 #include "config.hpp"
 #include <string>
 #include <tuple>
@@ -172,6 +173,12 @@ struct structures {
         using key_t = std::tuple<symbol_code, name, name>;
         key_t by_key()const { return std::make_tuple(token_code, account, action_name); }
     };
+
+    struct losses {
+        time_point_sec time;
+        symbol_code token_code;
+        int64_t total;
+    };
 };
 
     using agent_id_index = eosio::indexed_by<"agentid"_n, eosio::const_mem_fun<structures::agent, uint64_t, &structures::agent::primary_key> >;
@@ -212,6 +219,8 @@ struct structures {
     using susps [[eosio::order("id")]] =
         eosio::multi_index<"suspense"_n, structures::suspense, susp_key_index>;
     using susps_idx_t = decltype(susps(_self, _self.value).get_index<"bykey"_n>());
+
+    using losses_singleton [[eosio::order("id","asc")]] = eosio::singleton<"losses"_n, structures::losses>;
 
     void update_stake_proxied(symbol_code token_code, name agent_name) {
         eosio::update_stake_proxied(token_code, agent_name, true);
@@ -391,6 +400,8 @@ public:
     [[eosio::action]] void reward(std::vector<std::pair<name, int64_t> > rewards, symbol sym);
 
     [[eosio::action]] void pick(symbol_code token_code, std::vector<name> accounts);
+
+    [[eosio::action]] void returnlosses();
 
     static inline int64_t get_effective_stake(name account, symbol_code token_code) {
         agents agents_table(table_owner, table_owner.value);

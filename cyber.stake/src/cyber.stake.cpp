@@ -250,9 +250,10 @@ void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
     auto agent = agents_idx.find(std::make_tuple(token_code, account));
     if (agent == agents_idx.end()) {
         emplace_agent(account, agents_table, param, from);
-        agent = agents_idx.find(std::make_tuple(token_code, account));
     }
     update_stake_proxied(token_code, account);
+    agents_table.flush_cache();
+    agent = agents_idx.find(std::make_tuple(token_code, account));
 
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();

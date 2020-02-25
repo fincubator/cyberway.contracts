@@ -4,11 +4,14 @@ set -euo pipefail
 REVISION=$(git rev-parse HEAD)
 MASTER_REVISION=$(git rev-parse origin/master)
 
+echo $REVISION
+echo $MASTER_REVISION
 if [[ "${REVISION}" == "${MASTER_REVISION}" ]]; then
     BUILDTYPE="stable"
 else
     BUILDTYPE="latest"
 fi
+echo $BUILDTYPE
 
 CDT_TAG=${CDT_TAG:-$BUILDTYPE}
 CW_TAG=${CW_TAG:-$BUILDTYPE}

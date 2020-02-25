@@ -7,7 +7,7 @@ steps:
 
   - label: ":cop::skin-tone-2: deploy check"
     command: ".buildkite/steps/deploy-test.sh"
-    timeout: 20
+    timeout: 30
 
   - label: ":floppy-disk: publish image"
     command: ".buildkite/steps/publish-image.sh"

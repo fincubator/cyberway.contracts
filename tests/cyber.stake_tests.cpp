@@ -116,6 +116,9 @@ public:
         static string no_agent() {
             return "agent doesn't exist";
         }
+        const string agent_doesnt_exist() {
+            return amsg(no_agent());
+        }
         const string agent_exists() {
             return amsg(std::string("agent already exists"));
         }
@@ -169,6 +172,9 @@ public:
         }
         const string too_many_proxies() {
             return amsg(std::string("can't set proxy level, user has too many proxies"));
+        }
+        const string already_have_been_returned() {
+            return amsg(std::string("losses already have been returned"));
         }
         const string bad_precision          = amsg("symbol precision mismatch");
         const string quantity_bad_precision = amsg("quantity precision mismatch");
@@ -1524,4 +1530,43 @@ BOOST_FIXTURE_TEST_CASE(recursive_update_test, cyber_stake_tester) try {
 
     produce_block();
 } FC_LOG_AND_RETHROW()
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(return_losses)
+
+BOOST_FIXTURE_TEST_CASE(returns, cyber_stake_tester) try {
+    std::vector<uint8_t> max_proxies = {30, 10, 3, 1};
+
+    const account_name _mike2mike = N(dsqy4k5ym3uk);
+    const account_name _ltrack = N(ym2imjop4l5n);
+    const account_name _drugan7 = N(rzi4tcizzvyw);
+    const account_name _gunblade = N(xt351mrztghr);
+
+    BOOST_TEST_MESSAGE("-- create accounts");
+    create_accounts({_mike2mike, _ltrack, _drugan7, _gunblade});
+
+    BOOST_TEST_MESSAGE("-- open stake accounts");
+    BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(1000000, token._symbol)));
+    BOOST_CHECK_EQUAL(success(), stake.create(_issuer, token._symbol, max_proxies, 30 * 24 * 60 * 60));
+    BOOST_CHECK_EQUAL(success(), stake.open(_mike2mike, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_ltrack, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_drugan7, token._symbol.to_symbol_code()));
+
+    BOOST_TEST_MESSAGE("-- try to return losses with closed account for gunblade");
+    BOOST_CHECK_EQUAL(err.agent_doesnt_exist(), stake.return_losses(_issuer));
+
+    produce_block();
+
+    BOOST_TEST_MESSAGE("-- open stake account for gunblade");
+    BOOST_CHECK_EQUAL(success(), stake.open(_gunblade, token._symbol.to_symbol_code()));
+
+    BOOST_TEST_MESSAGE("-- return losses");
+    BOOST_CHECK_EQUAL(success(), stake.return_losses(_issuer));
+
+    produce_block();
+
+    BOOST_TEST_MESSAGE("-- can't return losses again");
+    BOOST_CHECK_EQUAL(err.already_have_been_returned(), stake.return_losses(_issuer));
+} FC_LOG_AND_RETHROW()
+
 BOOST_AUTO_TEST_SUITE_END()

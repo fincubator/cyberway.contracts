@@ -210,6 +210,15 @@ public:
             ("token_code", token_code)
         );
     }
+    
+    action_result setautorc(account_name account, symbol_code token_code, bool break_fee_enabled, bool break_min_stake_enabled) {
+        return push(N(setautorc), account, args()("account", account)("token_code", token_code)
+            ("break_fee_enabled", break_fee_enabled)("break_min_stake_enabled", break_min_stake_enabled));
+    }
+    
+    action_result setautorcmode(account_name issuer, symbol_code token_code, bool enabled) {
+        return push(N(setautorcmode), issuer, args()("enabled", enabled)("token_code", token_code));
+    }
 
     action_result register_candidate(account_name account, symbol_code token_code, bool need_to_open = true) {
         if (need_to_open) {

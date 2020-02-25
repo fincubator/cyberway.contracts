@@ -93,7 +93,23 @@ namespace cyber {
         eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<name_bid, uint64_t, &name_bid::by_high_bid>>;
       using name_bid_table [[eosio::order("newname","asc")]] =
         eosio::multi_index<"namebids"_n, name_bid, by_high>;
-
+        
+      struct auto_recall {
+        uint64_t id;
+        eosio::symbol_code token_code;
+        name account;
+        bool break_fee_enabled = false;
+        bool break_min_stake_enabled = false;
+        uint64_t primary_key()const { return id; }
+        using key_t = std::tuple<eosio::symbol_code, name>;
+        key_t by_key()const { return std::make_tuple(token_code, account); }
+      };
+      using autorc_key_index [[using eosio: order("token_code"), order("account")]] =
+        eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<auto_recall, auto_recall::key_t, &auto_recall::by_key> >;
+      using autorcs [[eosio::order("id")]] =
+        eosio::multi_index<"stake.autorc"_n, auto_recall, autorc_key_index>;
+      void autorcs_dummy() { autorcs autorcs_tabl(_self, _self.value); } // an ugly way to make abi appear
+    
          void check_stake(name account);
       public:
          using contract::contract;

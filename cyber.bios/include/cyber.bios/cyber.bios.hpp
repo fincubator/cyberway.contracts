@@ -180,7 +180,10 @@ namespace cyber {
          void bidrefund( name bidder );
 
          [[eosio::action]] void onblock(ignore<block_header> header);
-         
+
+         [[eosio::action]]
+         void providebw(name provider, name account) {} // defined in cyberway/libraries/chain/cyberway/cyberway_contract.cpp
+
          [[eosio::on_notify(CYBER_STAKE "::withdraw")]] void on_stake_withdraw(name account, asset quantity);
          [[eosio::on_notify(CYBER_STAKE "::provide")]] void on_stake_provide(name provider_name, name consumer_name, asset quantity);
 

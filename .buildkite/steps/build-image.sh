@@ -1,17 +1,27 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 REVISION=$(git rev-parse HEAD)
-MASTER_REVISION=$(git rev-parse origin/master)
 
-if [[ "${REVISION}" == "${MASTER_REVISION}" ]]; then
+if [[ "${BUILDKITE_BRANCH}" == "master" ]]; then
     BUILDTYPE="stable"
 else
     BUILDTYPE="latest"
 fi
 
-CDT_TAG=${CDT_TAG:-$BUILDTYPE}
-CW_TAG=${CW_TAG:-$BUILDTYPE}
-BUILDER_TAG=${BUILDER_TAG:-$BUILDTYPE}
+if [[ -z ${CDT_TAG} ]]; then 
+    CDT_TAG=${BUILDTYPE}
+    docker pull cyberway/cyberway.cdt:${CDT_TAG}
+fi
+
+if [[ -z ${CW_TAG} ]]; then 
+    CW_TAG=${BUILDTYPE}
+    docker pull cyberway/cyberway:${CW_TAG}
+fi
+
+if [[ -z ${BUILDER_TAG} ]]; then 
+    BUILDER_TAG=${BUILDTYPE}
+    docker pull cyberway/builder:${BUILDER_TAG}
+fi
 
 docker build -t cyberway/cyberway.contracts:${REVISION} --build-arg=version=${REVISION} --build-arg=cw_tag=${CW_TAG} --build-arg=cdt_tag=${CDT_TAG}  --build-arg=builder_tag=${BUILDER_TAG} -f Docker/Dockerfile .

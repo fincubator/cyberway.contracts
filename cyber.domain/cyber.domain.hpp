@@ -79,6 +79,15 @@ public:
     // * there must be no 2+ domains with the same `.domain` value except empty ("") value
     //     * there must be no 2+ domains with empty value and the same `.account`
     [[eosio::action]] void declarenames(const std::vector<name_info>& domains);
+
+    [[eosio::action]] void newusername(name creator, name owner, const std::string& name) {} // defined in cyberway/libraries/chain/cyberway/cyberway_contract.cpp
+
+    [[eosio::action]] void linkdomain(name owner, name to, const std::string& name) {} // defined in cyberway/libraries/chain/cyberway/cyberway_contract.cpp
+
+    [[eosio::action]] void unlinkdomain(name owner, const std::string& name) {} // defined in cyberway/libraries/chain/cyberway/cyberway_contract.cpp
+
+    [[eosio::action]] void passdomain(name from, name to, const std::string& name) {} // defined in cyberway/libraries/chain/cyberway/cyberway_contract.cpp
+
 };
 
 } /// eosiosystem

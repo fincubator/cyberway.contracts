@@ -125,6 +125,14 @@ public:
       */
    }
 
+   auto push_action(name code, name signer, name action, const mvo& data, bool add_nested = false) {
+      vector<permission_level> auths{{signer, N(active)}};
+      auto trace = base_tester::push_action(code, action, auths, data, base_tester::DEFAULT_EXPIRATION_DELTA, 0, add_nested);
+      produce_block();
+      BOOST_REQUIRE_EQUAL(true, chain_has_transaction(trace->id));
+      return trace;
+   }
+
    transaction reqauth( account_name from, const vector<permission_level>& auths, const fc::microseconds& max_serialization_time );
 
    abi_serializer abi_ser;
@@ -173,10 +181,11 @@ BOOST_FIXTURE_TEST_CASE( propose_approve_execute, cyber_msig_tester ) try {
    );
 
    //fail to execute before approval
-   BOOST_REQUIRE_EXCEPTION( push_action( N(alice), N(exec), mvo()
+   BOOST_REQUIRE_EXCEPTION(push_action(config::msig_account_name, N(alice), N(exec), mvo()
                                           ("proposer",      "alice")
                                           ("proposal_name", "first")
                                           ("executer",      "alice")
+                                          , true
                             ),
                             eosio_assert_message_exception,
                             eosio_assert_message_is("transaction authorization failed")
@@ -189,15 +198,19 @@ BOOST_FIXTURE_TEST_CASE( propose_approve_execute, cyber_msig_tester ) try {
                   ("level",         permission_level{ N(alice), config::active_name })
    );
 
+   // NOTE: currently we can't get nested trace easily, so just check outer trx trace sets `sent_nested`
    transaction_trace_ptr trace;
-   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->scheduled) { trace = t; } } );
-   push_action( N(alice), N(exec), mvo()
+   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->sent_nested) { trace = t; } } );
+   push_action(config::msig_account_name, N(alice), N(exec), mvo()
                   ("proposer",      "alice")
                   ("proposal_name", "first")
                   ("executer",      "alice")
+                  , true
    );
 
+   // NOTE: currently this checks are on "outer" trx, but originally they was on deferred. TODO: check nested trx trace
    BOOST_REQUIRE( bool(trace) );
+   BOOST_TEST_MESSAGE("TRACE : " << fc::json::to_string(*trace));
    BOOST_REQUIRE_EQUAL( 1, trace->action_traces.size() );
    BOOST_REQUIRE_EQUAL( transaction_receipt::executed, trace->receipt->status );
 } FC_LOG_AND_RETHROW()
@@ -225,10 +238,11 @@ BOOST_FIXTURE_TEST_CASE( propose_approve_unapprove, cyber_msig_tester ) try {
                   ("level",         permission_level{ N(alice), config::active_name })
    );
 
-   BOOST_REQUIRE_EXCEPTION( push_action( N(alice), N(exec), mvo()
+   BOOST_REQUIRE_EXCEPTION( push_action(config::msig_account_name, N(alice), N(exec), mvo()
                                           ("proposer",      "alice")
                                           ("proposal_name", "first")
                                           ("executer",      "alice")
+                                          , true
                             ),
                             eosio_assert_message_exception,
                             eosio_assert_message_is("transaction authorization failed")
@@ -255,10 +269,11 @@ BOOST_FIXTURE_TEST_CASE( propose_approve_by_two, cyber_msig_tester ) try {
 
    //fail because approval by bob is missing
 
-   BOOST_REQUIRE_EXCEPTION( push_action( N(alice), N(exec), mvo()
+   BOOST_REQUIRE_EXCEPTION( push_action(config::msig_account_name, N(alice), N(exec), mvo()
                                           ("proposer",      "alice")
                                           ("proposal_name", "first")
                                           ("executer",      "alice")
+                                          , true
                             ),
                             eosio_assert_message_exception,
                             eosio_assert_message_is("transaction authorization failed")
@@ -272,12 +287,13 @@ BOOST_FIXTURE_TEST_CASE( propose_approve_by_two, cyber_msig_tester ) try {
    );
 
    transaction_trace_ptr trace;
-   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->scheduled) { trace = t; } } );
+   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->sent_nested) { trace = t; } } );
 
-   push_action( N(alice), N(exec), mvo()
+   push_action(config::msig_account_name, N(alice), N(exec), mvo()
                   ("proposer",      "alice")
                   ("proposal_name", "first")
                   ("executer",      "alice")
+                  , true
    );
 
    BOOST_REQUIRE( bool(trace) );
@@ -353,11 +369,11 @@ BOOST_FIXTURE_TEST_CASE( big_transaction, cyber_msig_tester ) try {
    );
 
    transaction_trace_ptr trace;
-   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->scheduled) { trace = t; } } );
+   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->sent_nested) { trace = t; } } );
 
-   BOOST_REQUIRE_THROW(push_action( N(alice), N(exec), mvo("proposer",      "alice")
+   BOOST_REQUIRE_THROW(push_action(config::msig_account_name, N(alice), N(exec), mvo("proposer",      "alice")
                                                        ("proposal_name", "first")
-                                                       ("executer",      "alice")),
+                                                       ("executer",      "alice"), true),
                        fc::exception);
 
    // TODO: Cyberway exchange_wasm is compiled for EOS
@@ -379,10 +395,11 @@ BOOST_FIXTURE_TEST_CASE( propose_approve_invalidate, cyber_msig_tester ) try {
    );
 
    //fail to execute before approval
-   BOOST_REQUIRE_EXCEPTION( push_action( N(alice), N(exec), mvo()
+   BOOST_REQUIRE_EXCEPTION(push_action(config::msig_account_name, N(alice), N(exec), mvo()
                                           ("proposer",      "alice")
                                           ("proposal_name", "first")
                                           ("executer",      "alice")
+                                          , true
                             ),
                             eosio_assert_message_exception,
                             eosio_assert_message_is("transaction authorization failed")
@@ -401,10 +418,11 @@ BOOST_FIXTURE_TEST_CASE( propose_approve_invalidate, cyber_msig_tester ) try {
    );
 
    //fail to execute after invalidation
-   BOOST_REQUIRE_EXCEPTION( push_action( N(alice), N(exec), mvo()
+   BOOST_REQUIRE_EXCEPTION(push_action(config::msig_account_name, N(alice), N(exec), mvo()
                                           ("proposer",      "alice")
                                           ("proposal_name", "first")
                                           ("executer",      "alice")
+                                          , true
                             ),
                             eosio_assert_message_exception,
                             eosio_assert_message_is("transaction authorization failed")
@@ -422,10 +440,11 @@ BOOST_FIXTURE_TEST_CASE( propose_invalidate_approve, cyber_msig_tester ) try {
    );
 
    //fail to execute before approval
-   BOOST_REQUIRE_EXCEPTION( push_action( N(alice), N(exec), mvo()
+   BOOST_REQUIRE_EXCEPTION( push_action(config::msig_account_name, N(alice), N(exec), mvo()
                                           ("proposer",      "alice")
                                           ("proposal_name", "first")
                                           ("executer",      "alice")
+                                          , true
                             ),
                             eosio_assert_message_exception,
                             eosio_assert_message_is("transaction authorization failed")
@@ -445,12 +464,13 @@ BOOST_FIXTURE_TEST_CASE( propose_invalidate_approve, cyber_msig_tester ) try {
 
    //successfully execute
    transaction_trace_ptr trace;
-   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->scheduled) { trace = t; } } );
+   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->sent_nested) { trace = t; } } );
 
-   push_action( N(bob), N(exec), mvo()
+   push_action(config::msig_account_name, N(bob), N(exec), mvo()
                   ("proposer",      "alice")
                   ("proposal_name", "first")
                   ("executer",      "bob")
+                  , true
    );
 
    BOOST_REQUIRE( bool(trace) );
@@ -491,11 +511,12 @@ BOOST_FIXTURE_TEST_CASE( approve_with_hash, cyber_msig_tester ) try {
    );
 
    transaction_trace_ptr trace;
-   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->scheduled) { trace = t; } } );
-   push_action( N(alice), N(exec), mvo()
+   control->applied_transaction.connect([&]( const transaction_trace_ptr& t) { if (t->sent_nested) { trace = t; } } );
+   push_action(config::msig_account_name, N(alice), N(exec), mvo()
                   ("proposer",      "alice")
                   ("proposal_name", "first")
                   ("executer",      "alice")
+                  , true
    );
 
    BOOST_REQUIRE( bool(trace) );
@@ -564,11 +585,12 @@ BOOST_FIXTURE_TEST_CASE(propose_with_description, cyber_msig_tester) try {
    );
 
    transaction_trace_ptr trace;
-   control->applied_transaction.connect([&](const transaction_trace_ptr& t) { if (t->scheduled) { trace = t; } });
-   push_action(N(alice), N(exec), mvo()
+   control->applied_transaction.connect([&](const transaction_trace_ptr& t) { if (t->sent_nested) { trace = t; } });
+   push_action(config::msig_account_name, N(alice), N(exec), mvo()
       ("proposer", "alice")
       ("proposal_name", p_name)
       ("executer", "alice")
+      , true
    );
 
    BOOST_REQUIRE(bool(trace));

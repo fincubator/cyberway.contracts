@@ -22,11 +22,14 @@ namespace eosio {
          [[eosio::action]]
          void cancel( name proposer, name proposal_name, name canceler );
          [[eosio::action]]
-         void delay( name proposer, name proposal_name, name actor );
+         void schedule( name proposer, name proposal_name, name actor );
          [[eosio::action]]
          void exec( name proposer, name proposal_name, name executer );
          [[eosio::action]]
          void invalidate( name account );
+         // Now proposed delay is not strict, so add this helper action to allow strict lower time bound
+         [[eosio::action]]
+         void blockearly(time_point_sec min_time);
 
       private:
          struct proposal {
@@ -78,8 +81,8 @@ namespace eosio {
 
          using waits [[eosio::order("proposal_name")]] = eosio::multi_index<"waits"_n, proposal_wait> ;
 
-         void check_trx_authorization(
-            name proposer, name proposal_name, bool exec = false, std::optional<uint32_t> delay = {}
+         void check_auth_and_exec(
+            name proposer, name proposal_name, bool exec, std::optional<uint32_t> delay = {}
          );
    };
 

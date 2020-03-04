@@ -163,6 +163,7 @@ void multisig::check_auth_and_exec(name proposer, name proposal_name, bool exec,
       eosio::check(false, "proposal not found");
    }
    auto packed_provided_approvals = pack(approvals);
+   auto res = eosio::check_transaction_authorization(prop.packed_transaction.data(), prop.packed_transaction.size(),
                                                  (const char*)0, 0,
                                                  packed_provided_approvals.data(), packed_provided_approvals.size()
                                                  );

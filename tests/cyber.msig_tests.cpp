@@ -662,55 +662,6 @@ BOOST_FIXTURE_TEST_CASE(propose_with_description, cyber_msig_tester) try {
    BOOST_REQUIRE_EQUAL(transaction_receipt::executed, trace->receipt->status);
 } FC_LOG_AND_RETHROW()
 
-BOOST_FIXTURE_TEST_CASE(propose_with_delay, cyber_msig_tester) try {
-   BOOST_TEST_MESSAGE("Propose with delay");
-   const int delay = 60;
-   const name alice = N(alice);
-   const name proposal = N(with.delay);
-   const permission_level alice_perm{alice, config::active_name};
-
-   const auto check_exec = [&](name proposer, name proposal, int actions_count = 1) {
-      transaction_trace_ptr trace;
-      control->applied_transaction.connect([&](const transaction_trace_ptr& t) { if (t->nested) { trace = t; } });
-      exec(proposer, proposal, proposer);
-      BOOST_REQUIRE(bool(trace));
-      BOOST_REQUIRE_EQUAL(actions_count, trace->action_traces.size());
-      BOOST_REQUIRE_EQUAL(transaction_receipt::executed, trace->receipt->status);
-   };
-
-   BOOST_TEST_MESSAGE("--- delay can be skipped if enough approvals");
-   auto trx = reqauth_delayed(alice, {alice_perm}, delay);
-   propose(alice, proposal, trx, {alice_perm});
-   approve(alice, proposal, alice_perm);
-   check_exec(alice, proposal);
-   produce_block();
-
-   BOOST_TEST_MESSAGE("--- use `blockearly` to force delay");
-   auto action = mvo
-      ("account", name(config::msig_account_name))
-      ("name", "blockearly")
-      ("authorization", fc::variants{mvo("actor", alice)("permission", N(active))})
-      ("data", mvo("min_time", control->pending_block_time() + seconds(delay)));
-
-   trx = reqauth_delayed(alice, {alice_perm}, delay, fc::variants{action});
-   propose(alice, proposal, trx, {alice_perm});
-   approve(alice, proposal, alice_perm);
-   BOOST_TEST_MESSAGE("--- fail if too early");
-   BOOST_REQUIRE_EXCEPTION(check_exec(alice, proposal),
-      eosio_assert_message_exception, eosio_assert_message_is("too early"));
-
-   BOOST_TEST_MESSAGE("--- wait one block before trx delay and check it's still early");
-   int wait_blocks = delay / 3 - 2 - 1; // -2 is for 2 actions (propose/approve, each with produce_block)
-   produce_blocks(wait_blocks);
-   BOOST_REQUIRE_EXCEPTION(check_exec(alice, proposal),
-      eosio_assert_message_exception, eosio_assert_message_is("too early"));
-
-   BOOST_TEST_MESSAGE("--- wait one more block check it's time");
-   produce_block();
-   check_exec(alice, proposal, 2);
-
-} FC_LOG_AND_RETHROW()
-
 BOOST_FIXTURE_TEST_CASE(auth_wait, cyber_msig_tester) try {
    BOOST_TEST_MESSAGE("Schedule (auth with waits)");
    const name proposal = N(wait.auth);
@@ -750,52 +701,47 @@ BOOST_FIXTURE_TEST_CASE(auth_wait, cyber_msig_tester) try {
       BOOST_REQUIRE_EQUAL(transaction_receipt::executed, trace->receipt->status);
    };
    auto err_auth = eosio_assert_message_is{"transaction authorization failed"};
+   auto too_early = eosio_assert_message_is{"too early"};
 
    BOOST_TEST_MESSAGE("--- propose with long delay");
    const vector<permission_level> all_perms{alice_perm, bob_perm, carol_perm};
    auto trx = reqauth_delayed(bps, {bps_perm}, long_delay);
    propose(bob, proposal, trx, all_perms);
    BOOST_TEST_MESSAGE("----- fail to `schedule` when no approvals");
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, err_auth);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
    BOOST_REQUIRE_EXCEPTION(schedule(bob, proposal, bob), eosio_assert_message_exception, err_auth);
    BOOST_TEST_MESSAGE("----- successful `schedule` when one approval + enough delay");
    approve(bob, proposal, bob_perm);
    produce_block();
    schedule(bob, proposal, bob);
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, err_auth);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
    BOOST_TEST_MESSAGE("----- wait one block before ready and check it's failing to exec");
    int wait_blocks = long_delay / 3 - 1 - 1; // -1 = 1 block (within `schedule` call)
    produce_blocks(wait_blocks);
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, err_auth);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
    BOOST_TEST_MESSAGE("----- successful exec after waiting one more block");
    produce_block();
    check_exec(bob, proposal);
 
-   BOOST_TEST_MESSAGE("--- propose with long delay, but execute earlier");
-   trx = reqauth_delayed(bps, {bps_perm}, long_delay);
-   propose(bob, proposal, trx, all_perms);
-   approve(bob, proposal, bob_perm);
-   schedule(bob, proposal, bob);
-   BOOST_TEST_MESSAGE("----- add one more approval");
-   approve(bob, proposal, alice_perm);
-   BOOST_TEST_MESSAGE("----- now short delay is enough, wait one block before ready and check it's failing");
-   wait_blocks = short_delay / 3 - 2 - 1; // -2 = 2 "produce_block"s (delay+approve)
-   produce_blocks(wait_blocks);
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, err_auth);
-   BOOST_TEST_MESSAGE("----- success after waiting one more block");
-   produce_block();
-   check_exec(bob, proposal);
-
-   BOOST_TEST_MESSAGE("--- propose with short delay, but execute instantly");
+   BOOST_TEST_MESSAGE("--- propose with short delay, can't execute earlier even with all approvals");
    trx = reqauth_delayed(bps, {bps_perm}, short_delay);
    propose(bob, proposal, trx, all_perms);
    BOOST_TEST_MESSAGE("----- fail to `schedule` with one approval");
    approve(bob, proposal, bob_perm);
    BOOST_REQUIRE_EXCEPTION(schedule(bob, proposal, bob), eosio_assert_message_exception, err_auth);
-   BOOST_TEST_MESSAGE("----- successful `exec` without `schedule` when have all approvals");
+   BOOST_TEST_MESSAGE("----- fail to `exec` without `schedule` when have all approvals");
    approve(bob, proposal, alice_perm);
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, err_auth);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
    approve(bob, proposal, carol_perm);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
+   BOOST_TEST_MESSAGE("----- still fail to `exec` one block earlier than delay");
+   schedule(bob, proposal, bob);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
+   wait_blocks = short_delay / 3 - 1 - 1; // -1 = 1 block (within `schedule` call)
+   produce_blocks(wait_blocks);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
+   BOOST_TEST_MESSAGE("----- successful `exec` after delay");
+   produce_block();
    check_exec(bob, proposal);
 
 } FC_LOG_AND_RETHROW()
@@ -809,7 +755,7 @@ BOOST_FIXTURE_TEST_CASE(no_delay_schedule, cyber_msig_tester) try {
    auto trx = reqauth(bob, {bob_perm}, abi_serializer_max_time);
    propose(bob, proposal, trx, {bob_perm});
    BOOST_REQUIRE_EXCEPTION(schedule(bob, proposal, bob), eosio_assert_message_exception,
-      eosio_assert_message_is("can't delay transaction with zero delay_sec, call exec"));
+      eosio_assert_message_is("can't schedule transaction with zero delay_sec, call exec"));
 
 } FC_LOG_AND_RETHROW()
 

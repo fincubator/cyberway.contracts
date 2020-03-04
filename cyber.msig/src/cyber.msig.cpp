@@ -134,14 +134,18 @@ void multisig::schedule(name proposer, name proposal_name, name actor) {
    });
 }
 
-void multisig::check_auth_and_exec(name proposer, name proposal_name, bool exec, std::optional<uint32_t> delay) {
+void multisig::check_auth_and_exec(name proposer, name proposal_name, bool exec, std::optional<uint32_t> waited) {
    proposals proptable(_self, proposer.value);
    auto& prop = proptable.get( proposal_name.value, "proposal not found" );
    transaction_header trx_header;
    datastream<const char*> ds( prop.packed_transaction.data(), prop.packed_transaction.size() );
    ds >> trx_header;
    eosio::check( trx_header.expiration >= current_time_point(), "transaction expired" );
-   eosio::check( trx_header.delay_sec || exec, "can't delay transaction with zero delay_sec, call exec" );
+   if (trx_header.delay_sec) {
+      eosio::check(!exec || (waited && *waited >= trx_header.delay_sec), "too early");
+   } else {
+      eosio::check(exec, "can't schedule transaction with zero delay_sec, call exec");
+   }
 
    approvals apptable(  _self, proposer.value );
    auto apps_it = apptable.find( proposal_name.value );
@@ -159,23 +163,13 @@ void multisig::check_auth_and_exec(name proposer, name proposal_name, bool exec,
       eosio::check(false, "proposal not found");
    }
    auto packed_provided_approvals = pack(approvals);
-   auto packed_trx = prop.packed_transaction;
-   if (delay && *delay < trx_header.delay_sec) {
-      // only repack if executing earlier than trx delay
-      transaction trx;
-      ds = datastream<const char*>(packed_trx.data(), packed_trx.size());
-      ds >> trx;
-      trx.delay_sec = *delay;
-      packed_trx = pack(trx);
-   }
-   auto res = eosio::check_transaction_authorization(packed_trx.data(), packed_trx.size(),
                                                  (const char*)0, 0,
                                                  packed_provided_approvals.data(), packed_provided_approvals.size()
                                                  );
    eosio::check( res > 0, "transaction authorization failed" );
 
    if (exec) {
-      eosio::send_nested(packed_trx.data(), packed_trx.size());
+      eosio::send_nested(prop.packed_transaction.data(), prop.packed_transaction.size());
       proptable.erase(prop);
       apptable.erase(apps_it);
    }
@@ -211,12 +205,6 @@ void multisig::invalidate( name account ) {
             i.last_invalidation_time = eosio::current_time_point();
          });
    }
-}
-
-// TODO: can be context free
-void multisig::blockearly(time_point_sec min_time) {
-   // require_auth(any);
-   eosio::check(eosio::current_time_point().sec_since_epoch() >= min_time.sec_since_epoch(), "too early");
 }
 
 

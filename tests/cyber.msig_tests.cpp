@@ -702,13 +702,14 @@ BOOST_FIXTURE_TEST_CASE(auth_wait, cyber_msig_tester) try {
    };
    auto err_auth = eosio_assert_message_is{"transaction authorization failed"};
    auto too_early = eosio_assert_message_is{"too early"};
+   auto not_scheduled = eosio_assert_message_is{"transaction was not scheduled"};
 
    BOOST_TEST_MESSAGE("--- propose with long delay");
    const vector<permission_level> all_perms{alice_perm, bob_perm, carol_perm};
    auto trx = reqauth_delayed(bps, {bps_perm}, long_delay);
    propose(bob, proposal, trx, all_perms);
    BOOST_TEST_MESSAGE("----- fail to `schedule` when no approvals");
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, not_scheduled);
    BOOST_REQUIRE_EXCEPTION(schedule(bob, proposal, bob), eosio_assert_message_exception, err_auth);
    BOOST_TEST_MESSAGE("----- successful `schedule` when one approval + enough delay");
    approve(bob, proposal, bob_perm);
@@ -731,9 +732,9 @@ BOOST_FIXTURE_TEST_CASE(auth_wait, cyber_msig_tester) try {
    BOOST_REQUIRE_EXCEPTION(schedule(bob, proposal, bob), eosio_assert_message_exception, err_auth);
    BOOST_TEST_MESSAGE("----- fail to `exec` without `schedule` when have all approvals");
    approve(bob, proposal, alice_perm);
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, not_scheduled);
    approve(bob, proposal, carol_perm);
-   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
+   BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, not_scheduled);
    BOOST_TEST_MESSAGE("----- still fail to `exec` one block earlier than delay");
    schedule(bob, proposal, bob);
    BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);

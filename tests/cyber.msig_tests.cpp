@@ -702,7 +702,8 @@ BOOST_FIXTURE_TEST_CASE(auth_wait, cyber_msig_tester) try {
    };
    auto err_auth = eosio_assert_message_is{"transaction authorization failed"};
    auto too_early = eosio_assert_message_is{"too early"};
-   auto not_scheduled = eosio_assert_message_is{"transaction was not scheduled"};
+   auto not_scheduled = eosio_assert_message_is{"proposal was not scheduled"};
+   auto already_scheduled = eosio_assert_message_is{"proposal already scheduled"};
 
    BOOST_TEST_MESSAGE("--- propose with long delay");
    const vector<permission_level> all_perms{alice_perm, bob_perm, carol_perm};
@@ -737,6 +738,7 @@ BOOST_FIXTURE_TEST_CASE(auth_wait, cyber_msig_tester) try {
    BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, not_scheduled);
    BOOST_TEST_MESSAGE("----- still fail to `exec` one block earlier than delay");
    schedule(bob, proposal, bob);
+   BOOST_REQUIRE_EXCEPTION(schedule(bob, proposal, bob), eosio_assert_message_exception, already_scheduled);
    BOOST_REQUIRE_EXCEPTION(check_exec(bob, proposal), eosio_assert_message_exception, too_early);
    wait_blocks = short_delay / 3 - 1 - 1; // -1 = 1 block (within `schedule` call)
    produce_blocks(wait_blocks);

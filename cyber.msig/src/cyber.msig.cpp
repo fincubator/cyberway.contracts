@@ -149,7 +149,7 @@ void multisig::schedule(name proposer, name proposal_name, name actor) {
    auto& prop = proptable.get( proposal_name.value, "proposal not found" );
    auto& apps = apptable.get( proposal_name.value, "approvals not found" );
    auto wait = waittable.find(proposal_name.value);
-   eosio::check(wait == waittable.end(), "proposal already delayed");
+   eosio::check(wait == waittable.end(), "proposal already scheduled");
 
    auto trx_header = unpack<transaction_header>(prop.packed_transaction);
    eosio::check( trx_header.expiration >= current_time_point(), "transacton expired" );
@@ -176,7 +176,7 @@ void multisig::exec( name proposer, name proposal_name, name executer ) {
    eosio::check( trx_header.expiration >= current_time_point(), "transacton expired" );
    if ( trx_header.delay_sec ) {
       waits waittable(_self, proposer.value);
-      auto wait = waittable.get( proposal_name.value, "transaction was not scheduled" );
+      auto wait = waittable.get( proposal_name.value, "proposal was not scheduled" );
       uint32_t waited = current_time_point().sec_since_epoch() - wait.started.sec_since_epoch();
       eosio::check( (uint32_t)trx_header.delay_sec <= waited, "too early" );
       waittable.erase(wait);

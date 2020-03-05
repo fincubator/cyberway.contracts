@@ -78,9 +78,7 @@ namespace eosio {
 
          using waits [[eosio::order("proposal_name")]] = eosio::multi_index<"waits"_n, proposal_wait> ;
 
-         void check_auth_and_exec(
-            name proposer, name proposal_name, bool exec, std::optional<uint32_t> waited = {}
-         );
+         void check_proposal_authorization(const proposal &prop, const approvals_info &apps);
    };
 
 } /// namespace eosio

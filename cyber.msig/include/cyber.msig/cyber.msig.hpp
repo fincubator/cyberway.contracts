@@ -22,6 +22,8 @@ namespace eosio {
          [[eosio::action]]
          void cancel( name proposer, name proposal_name, name canceler );
          [[eosio::action]]
+         void schedule( name proposer, name proposal_name, name actor );
+         [[eosio::action]]
          void exec( name proposer, name proposal_name, name executer );
          [[eosio::action]]
          void invalidate( name account );
@@ -66,6 +68,17 @@ namespace eosio {
 
          using invalidations [[eosio::order("account")]] =
             eosio::multi_index<"invals"_n, invalidation>;
+
+         struct proposal_wait {
+            name proposal_name;
+            time_point_sec started;
+
+            uint64_t primary_key()const { return proposal_name.value; }
+         };
+
+         using waits [[eosio::order("proposal_name")]] = eosio::multi_index<"waits"_n, proposal_wait> ;
+
+         void check_proposal_authorization(const proposal &prop, const approvals_info &apps);
    };
 
 } /// namespace eosio

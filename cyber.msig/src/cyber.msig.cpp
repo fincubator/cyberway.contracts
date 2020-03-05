@@ -108,50 +108,85 @@ void multisig::cancel( name proposer, name proposal_name, name canceler ) {
    }
    proptable.erase(prop);
 
-   //remove from new table
    approvals apptable(  _self, proposer.value );
    auto apps_it = apptable.find( proposal_name.value );
    eosio::check(apps_it != apptable.end(), "proposal not found");
    apptable.erase(apps_it);
+
+   waits waittable(_self, proposer.value);
+   auto itr = waittable.find(proposal_name.value);
+   if (itr != waittable.end()) {
+      waittable.erase(itr);
+   }
+}
+
+void multisig::check_proposal_authorization(const proposal &prop, const approvals_info &apps) {
+   std::vector<permission_level> approvals;
+   invalidations inv_table( _self, _self.value );
+   approvals.reserve( apps.provided_approvals.size() );
+   for ( auto& p : apps.provided_approvals ) {
+      auto it = inv_table.find( p.level.actor.value );
+      if ( it == inv_table.end() || it->last_invalidation_time < p.time ) {
+         approvals.push_back(p.level);
+      }
+   }
+
+   auto packed_provided_approvals = pack(approvals);
+   auto res = eosio::check_transaction_authorization(prop.packed_transaction.data(), prop.packed_transaction.size(),
+                                                 (const char*)0, 0,
+                                                 packed_provided_approvals.data(), packed_provided_approvals.size()
+                                                 );
+   eosio::check( res > 0, "transaction authorization failed" );
+}
+
+void multisig::schedule(name proposer, name proposal_name, name actor) {
+   require_auth(actor);
+
+   proposals proptable( _self, proposer.value );
+   approvals apptable( _self, proposer.value );
+   waits waittable(_self, proposer.value);
+
+   auto& prop = proptable.get( proposal_name.value, "proposal not found" );
+   auto& apps = apptable.get( proposal_name.value, "approvals not found" );
+   auto wait = waittable.find(proposal_name.value);
+   eosio::check(wait == waittable.end(), "proposal already scheduled");
+
+   auto trx_header = unpack<transaction_header>(prop.packed_transaction);
+   eosio::check( trx_header.expiration >= current_time_point(), "transacton expired" );
+   eosio::check( trx_header.delay_sec != 0u, "can't schedule transaction with zero delay_sec, call exec");
+
+   check_proposal_authorization(prop, apps);
+
+   waittable.emplace(actor, [&](auto& w) {
+      w.proposal_name = proposal_name;
+      w.started = current_time_point();
+   });
 }
 
 void multisig::exec( name proposer, name proposal_name, name executer ) {
    require_auth( executer );
 
    proposals proptable( _self, proposer.value );
+   approvals apptable( _self, proposer.value );
+
    auto& prop = proptable.get( proposal_name.value, "proposal not found" );
-   transaction_header trx_header;
-   datastream<const char*> ds( prop.packed_transaction.data(), prop.packed_transaction.size() );
-   ds >> trx_header;
-   eosio::check( trx_header.expiration >= current_time_point(), "transaction expired" );
+   auto& apps = apptable.get( proposal_name.value, "approvals not found" );
 
-   approvals apptable(  _self, proposer.value );
-   auto apps_it = apptable.find( proposal_name.value );
-   std::vector<permission_level> approvals;
-   invalidations inv_table( _self, _self.value );
-   if ( apps_it != apptable.end() ) {
-      approvals.reserve( apps_it->provided_approvals.size() );
-      for ( auto& p : apps_it->provided_approvals ) {
-         auto it = inv_table.find( p.level.actor.value );
-         if ( it == inv_table.end() || it->last_invalidation_time < p.time ) {
-            approvals.push_back(p.level);
-         }
-      }
-      apptable.erase(apps_it);
-   } else {
-      eosio::check(false, "proposal not found");
+   auto trx_header = unpack<transaction_header>(prop.packed_transaction);
+   eosio::check( trx_header.expiration >= current_time_point(), "transacton expired" );
+   if ( trx_header.delay_sec ) {
+      waits waittable(_self, proposer.value);
+      auto wait = waittable.get( proposal_name.value, "proposal was not scheduled" );
+      uint32_t waited = current_time_point().sec_since_epoch() - wait.started.sec_since_epoch();
+      eosio::check( (uint32_t)trx_header.delay_sec <= waited, "too early" );
+      waittable.erase(wait);
    }
-   auto packed_provided_approvals = pack(approvals);
-   auto res = eosio::check_transaction_authorization( prop.packed_transaction.data(), prop.packed_transaction.size(),
-                                                 (const char*)0, 0,
-                                                 packed_provided_approvals.data(), packed_provided_approvals.size()
-                                                 );
-   eosio::check( res > 0, "transaction authorization failed" );
 
-   eosio::send_deferred( (uint128_t(proposer.value) << 64) | proposal_name.value, executer,
-                  prop.packed_transaction.data(), prop.packed_transaction.size() );
+   check_proposal_authorization(prop, apps);
+   eosio::send_nested(prop.packed_transaction.data(), prop.packed_transaction.size());
 
    proptable.erase(prop);
+   apptable.erase(apps);
 }
 
 void multisig::invalidate( name account ) {
@@ -169,5 +204,6 @@ void multisig::invalidate( name account ) {
          });
    }
 }
+
 
 } /// namespace eosio

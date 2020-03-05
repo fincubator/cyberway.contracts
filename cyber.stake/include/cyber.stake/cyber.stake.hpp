@@ -189,6 +189,16 @@ struct structures {
         symbol_code token_code;
         int64_t total;
     };
+    
+    struct box {
+        uint64_t id;
+        name treasurer;
+        name title;
+        asset quantity;
+        uint64_t primary_key()const { return id; }
+        using key_t = std::tuple<name, name>;
+        key_t by_key()const { return std::make_tuple(treasurer, title); }
+    };
 };
 
     using agent_id_index = eosio::indexed_by<"agentid"_n, eosio::const_mem_fun<structures::agent, uint64_t, &structures::agent::primary_key> >;
@@ -235,6 +245,10 @@ struct structures {
     using susps_idx_t = decltype(susps(_self, _self.value).get_index<"bykey"_n>());
 
     using losses_singleton [[eosio::order("id","asc")]] = eosio::singleton<"losses"_n, structures::losses>;
+    
+    using box_key_index [[eosio::order("treasurer"), eosio::order("title")]] =
+        eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::box, structures::box::key_t, &structures::box::by_key> >;
+    using boxes [[eosio::order("id")]] = eosio::multi_index<"box"_n, structures::box, box_key_index>;
 
     void update_stake_proxied(symbol_code token_code, name agent_name) {
         eosio::update_stake_proxied(token_code, agent_name, true);
@@ -248,7 +262,7 @@ struct structures {
     void add_proxy(symbol_code token_code, grants& grants_table, const structures::agent& grantor_as_agent, const structures::agent& agent,
         int16_t pct, int64_t share, int16_t break_fee = -1, int64_t break_min_own_staked = -1);
 
-    void change_balance(name account, asset quantity);
+    void sub_own_funds(name account, asset quantity);
 
     static inline void staking_exists(symbol_code token_code) {
         params params_table(table_owner, table_owner.value);
@@ -281,6 +295,8 @@ struct structures {
     
     void check_suspense(susps& susps_table, susps_idx_t& susps_idx, symbol_code token_code, name account, name action_name);
     void set_suspense(name ram_payer, susps& susps_table, susps_idx_t& susps_idx, symbol_code token_code, name account, name action_name, int delay);
+    
+    void send_checkstake(name account, symbol_code token_code);
 
 public:
 
@@ -431,5 +447,8 @@ public:
     
     [[eosio::action]] void setautorc(name account, symbol_code token_code, bool break_fee_enabled, bool break_min_stake_enabled);
     [[eosio::action]] void setautorcmode(symbol_code token_code, bool enabled);
+    
+    [[eosio::action]] void constrain(name treasurer, name title, asset quantity);
+    [[eosio::action]] void release(name treasurer, name title, name owner);
 };
 } /// namespace cyber

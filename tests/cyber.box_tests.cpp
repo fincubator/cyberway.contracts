@@ -52,6 +52,7 @@ public:
         const string no_to_acc  = amsg("to account does not exist");
         
         const string no_balance  = amsg("owner balance does not exist");
+        const string not_owner  = amsg("only the owner can do it");
         
         string missing_authority(name acc) { return "missing authority of " + std::string(acc); };
 
@@ -130,14 +131,14 @@ BOOST_FIXTURE_TEST_CASE(stake_in_box_tests, cyber_box_tester) try {
         BOOST_CHECK_EQUAL(success(), stake.delegatevote(_whale, v.first, asset(v.second, token._symbol)));
     }
     
-    BOOST_CHECK_EQUAL(err.no_box, box.transfer(stake_account_name, _whale, N(alicebox), _alice, "", _whale));
+    BOOST_CHECK_EQUAL(err.no_box, box.transfer(stake_account_name, _whale, N(alicebox), _whale, _alice, "", _whale));
     
     BOOST_CHECK_EQUAL(success(), box.create(stake_account_name, _whale, N(alicebox)));
     BOOST_CHECK_EQUAL(success(), box.create(stake_account_name, _whale, N(bobbox)));
     BOOST_CHECK_EQUAL(success(), box.create(stake_account_name, _whale, N(carolbox)));
     BOOST_CHECK_EQUAL(success(), box.create(stake_account_name, _whale, N(whalebox)));
     
-    BOOST_CHECK_EQUAL(err.empty_transfer, box.transfer(stake_account_name, _whale, N(alicebox), _alice, "", _whale));
+    BOOST_CHECK_EQUAL(err.empty_transfer, box.transfer(stake_account_name, _whale, N(alicebox), _whale, _alice, "", _whale));
     
     BOOST_CHECK_EQUAL(success(), stake.constrain(_whale, N(alicebox), asset(alice_box, token._symbol)));
     BOOST_CHECK_EQUAL(success(), stake.constrain(_whale, N(bobbox),   asset(bob_box,   token._symbol)));
@@ -147,16 +148,18 @@ BOOST_FIXTURE_TEST_CASE(stake_in_box_tests, cyber_box_tester) try {
     produce_block();
     BOOST_CHECK_EQUAL(err.non_unique, stake.constrain(_whale, N(alicebox), asset(alice_box, token._symbol)));
     
-    BOOST_CHECK_EQUAL(err.no_to_acc, box.transfer(stake_account_name, _whale, N(alicebox), N(leprechaun), "", _whale));
+    BOOST_CHECK_EQUAL(err.no_to_acc, box.transfer(stake_account_name, _whale, N(alicebox), _whale, N(leprechaun), "", _whale));
     
-    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(alicebox), _bob, "give it to alice", _whale));
+    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(alicebox), _whale, _bob, "give it to alice", _whale));
     
-    BOOST_CHECK_EQUAL(err.missing_authority(_bob), box.transfer(stake_account_name, _whale, N(alicebox), _alice, "", _whale));
-    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(alicebox), _alice, "", _bob));
+    BOOST_CHECK_EQUAL(err.missing_authority(_bob), box.transfer(stake_account_name, _whale, N(alicebox), _bob, _alice, "", _whale));
+    BOOST_CHECK_EQUAL(err.not_owner, box.transfer(stake_account_name, _whale, N(alicebox), _whale, _alice, "", _whale));
+
+    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(alicebox), _bob, _alice, "", _bob));
     
-    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(bobbox),   _bob, "", _whale));
-    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(carolbox), _carol, "", _whale));
-    BOOST_CHECK_EQUAL(err.self_transfer, box.transfer(stake_account_name, _whale, N(whalebox), _whale, "", _whale));
+    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(bobbox),   _whale, _bob, "", _whale));
+    BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(carolbox), _whale, _carol, "", _whale));
+    BOOST_CHECK_EQUAL(err.self_transfer, box.transfer(stake_account_name, _whale, N(whalebox), _whale, _whale, "", _whale));
     
     BOOST_CHECK_EQUAL(err.missing_authority(_alice), box.unpack(stake_account_name, _whale, N(alicebox), _whale));
     

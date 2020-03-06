@@ -51,16 +51,17 @@ void box::burn(name contract, name treasurer, name title) {
     erase_box(contract, treasurer, title, false);
 }
 
-void box::transfer(name contract, name treasurer, name title, name to, std::string memo) {
+void box::transfer(name contract, name treasurer, name title, name from, name to, std::string memo) {
     eosio::check(is_account(to), "to account does not exist");
     boxes boxes_table(_self, _self.value);
     auto boxes_idx = boxes_table.get_index<"bykey"_n>();
     auto box_itr = boxes_idx.find({contract, treasurer, title});
     eosio::check(box_itr != boxes_idx.end(), "box does not exist");
-    require_auth(box_itr->owner);
-    eosio::check(box_itr->owner != to, "cannot transfer to self");
+    require_auth(from);
+    eosio::check(box_itr->owner == from, "only the owner can do it");
+    eosio::check(from != to, "cannot transfer to self");
     eosio::check(!box_itr->empty, "cannot transfer an empty box");
-    require_recipient(box_itr->owner);
+    require_recipient(from);
     require_recipient(to);
     boxes_idx.modify(box_itr, name(), [&](auto& b) { b.owner = to; });
 }

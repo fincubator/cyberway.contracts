@@ -29,9 +29,9 @@ public:
         return push(N(burn), signer,
             args()("contract", contract)("treasurer", treasurer)("title", title));
     }
-    action_result transfer(name contract, name treasurer, name title, name to, std::string memo, name signer) {
+    action_result transfer(name contract, name treasurer, name title, name from, name to, std::string memo, name signer) {
         return push(N(transfer), signer,
-            args()("contract", contract)("treasurer", treasurer)("title", title)("to", to)("memo", memo));
+            args()("contract", contract)("treasurer", treasurer)("title", title)("from", from)("to", to)("memo", memo));
     }
     
     variant get_box(name contract, name treasurer, name title) {

@@ -34,7 +34,12 @@ public:
     [[eosio::action]] void packup(name contract, name treasurer, name title);
     [[eosio::action]] void unpack(name contract, name treasurer, name title);
     [[eosio::action]] void burn(name contract, name treasurer, name title);
-    [[eosio::action]] void transfer(name contract, name treasurer, name title, name to, std::string memo);
+    [[eosio::action]] void transfer(name contract, name treasurer, name title, name from, name to, std::string memo);
+    static inline name get_owner(name box_contract_account, name contract, name treasurer, name title) {
+        boxes boxes_table(box_contract_account, box_contract_account.value);
+        auto boxes_idx = boxes_table.get_index<"bykey"_n>();
+        return boxes_idx.get({contract, treasurer, title}, "box does not exist").owner;
+    }
     //do we need to add the ability to put boxes in a box?
 };
 } /// namespace cyber

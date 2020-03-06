@@ -9,12 +9,12 @@ using namespace cyber::config;
 
 namespace cyber {
 
-void govern::onblock(name producer) {
+void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_version) {
     require_auth(_self);
     
     auto state = state_singleton(_self, _self.value);
     auto s = state.get_or_default(structures::state_info { .last_schedule_increase = eosio::current_time_point() });
-    
+
     s.block_num++;
     
     int64_t block_reward = 0;
@@ -72,7 +72,14 @@ void govern::onblock(name producer) {
     if ((s.block_num >= s.last_producers_num * schedule_period_factor + s.last_propose_block_num) || !s.last_propose_block_num) {
         propose_producers(s);
     }
-    maybe_promote_producers();
+
+    // the schedule version temporarily has the binary extension type only for the upgrade phase
+    if (schedule_version.has_value()) {
+        if (s.schedule_version.has_value() && s.schedule_version.value() != schedule_version.value()) {
+            promote_producers();
+        }
+        s.schedule_version.emplace(schedule_version.value());
+    }
 
     state.set(s, _self);
 }
@@ -198,17 +205,6 @@ int64_t govern::get_target_emission_per_block(int64_t supply) const {
     return emission_per_year / config::blocks_per_year;
 }
 
-void govern::setactprods(std::vector<name> pending_active_producers) {
-    require_auth(_self);
-    pending_producers pending_prods_table(_self, _self.value);
-    auto prods = pending_prods_table.get_or_default(structures::pending_producers_info{});
-    if (!prods.accounts.empty()) {
-        eosio::print("WARNING! govern::setactprods, pending_prods_table was not empty\n");
-    }
-    prods.accounts = pending_active_producers;
-    pending_prods_table.set(prods, _self);
-}
-
 void govern::setshift(int8_t shift) {
     eosio::check(schedule_size_shift_min <= shift && shift <= schedule_size_shift_max, "incorrect shift");
     require_auth(producers_name);
@@ -219,12 +215,7 @@ void govern::setshift(int8_t shift) {
     sched_state.set(sched, _self);
 }
 
-void govern::maybe_promote_producers() {
-    pending_producers pending_prods_table(_self, _self.value);
-    auto prods = pending_prods_table.get_or_default(structures::pending_producers_info{});
-    if (prods.accounts.empty()) {
-        return;
-    }
+void govern::promote_producers() {
     obliged_producers obliged_prods_table(_self, _self.value);
     omissions omissions_table(_self, _self.value);
     unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
@@ -269,12 +260,11 @@ void govern::maybe_promote_producers() {
             });
         }
     }
-    
-    for (const auto& acc : prods.accounts) {
+
+    auto prods_accounts = eosio::get_active_producers();
+    for (const auto& acc : prods_accounts) {
         obliged_prods_table.emplace(_self, [&](auto& p) { p = structures::producer_struct { .account = acc }; });
     }
-    prods.accounts.clear();
-    pending_prods_table.set(prods, _self);
 }
 
 }

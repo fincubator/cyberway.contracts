@@ -413,6 +413,7 @@ BOOST_FIXTURE_TEST_CASE(producer_replacement, cyber_govern_tester) try {
         BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[p], token._symbol)["signing_key"].as<public_key_type>(), get_public_key(cur_producers[p], "active"));
     }
     govern.wait_schedule_activation(true, {cur_producers[0]});
+    produce_block(); // producer key resetting happens on the second block of the schedule round
     BOOST_CHECK_EQUAL(govern.get_active_producers(), govern.make_producers_group(cur_producers));
     BOOST_CHECK_EQUAL(stake.get_candidate(cur_producers[0], token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
     for (size_t p = 1; p < cur_producers.size(); p++) {

@@ -25,6 +25,8 @@ struct structures {
         uint16_t last_producers_num = 1;
 
         // using of binary_extension is a temporary decision only for upgrade phase
+        eosio::binary_extension<time_point_sec> last_resize_step;
+        eosio::binary_extension<int8_t> resize_shift;
         eosio::binary_extension<uint32_t> schedule_version;
 
         // this operator is required to set binary extension fields
@@ -37,20 +39,22 @@ struct structures {
             required_producers_num = s.required_producers_num;
             last_producers_num = s.last_producers_num;
 
+            set_extension_field(last_resize_step, s.last_resize_step);
+            set_extension_field(resize_shift, s.resize_shift);
+            set_extension_field(schedule_version, s.schedule_version);
+        }
+
+        template<typename T>
+        void set_extension_field(eosio::binary_extension<T>& dst, const eosio::binary_extension<T>& src) const {
             // temporary decision only for upgrade phase
-            if (s.schedule_version.has_value()) {
-                schedule_version.emplace(s.schedule_version.value());
+            if (src.has_value()) {
+                dst.emplace(src.value());
             } else {
-                schedule_version.reset();
+                dst.reset();
             }
         }
     };
-    
-    struct schedule_resize_info {
-        time_point_sec last_step;
-        int8_t shift = 1;
-    };
-    
+
     struct [[using eosio: event("burnreward"), contract("cyber.govern")]] balance_struct {
         name account;
         int64_t amount;
@@ -72,7 +76,6 @@ struct structures {
 };
 
     using state_singleton [[eosio::order("id","asc")]] = eosio::singleton<"governstate"_n, structures::state_info>;
-    using schedule_resize_singleton [[eosio::order("id","asc")]] = eosio::singleton<"schedresize"_n, structures::schedule_resize_info>;
     using balances [[eosio::order("account","asc")]] = eosio::multi_index<"balance"_n, structures::balance_struct>;
     using unconfirmed_balances [[eosio::order("account","asc")]] = eosio::multi_index<"uncbalance"_n, structures::balance_struct>;
     using obliged_producers [[eosio::order("account","asc")]] = eosio::multi_index<"obligedprod"_n, structures::producer_struct>;

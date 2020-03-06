@@ -151,24 +151,27 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
 
 void govern::propose_producers(structures::state_info& s) {
     s.last_propose_block_num = s.block_num;
-    
-    auto sched_state = schedule_resize_singleton(_self, _self.value);
-    auto sched = sched_state.get_or_default(structures::schedule_resize_info { .last_step = eosio::current_time_point() });
-    
-    if ((eosio::current_time_point() - sched.last_step).to_seconds() >= schedule_resize_min_delay) {
-        s.required_producers_num += sched.shift;
+
+    if (!s.last_resize_step.has_value()) {
+        s.last_resize_step.emplace(eosio::current_time_point());
+    }
+    if (!s.resize_shift.has_value()) {
+        s.resize_shift.emplace(1);
+    }
+
+    if ((eosio::current_time_point() - s.last_resize_step.value()).to_seconds() >= schedule_resize_min_delay) {
+        s.required_producers_num += s.resize_shift.value();
         s.required_producers_num = std::min(std::max(s.required_producers_num, min_producers_num), max_producers_num);
         
-        sched.last_step = eosio::current_time_point();
+        s.last_resize_step.emplace(eosio::current_time_point());
     }
-    sched_state.set(sched, _self);
-    
+
     auto new_producers = stake::get_top(system_token.code(), s.required_producers_num - active_reserve_producers_num, active_reserve_producers_num);
     auto new_producers_num = new_producers.size();
     
     auto min_new_producers_num = s.last_producers_num;
-    if (sched.shift < 0) {
-        min_new_producers_num -= std::min<decltype(min_new_producers_num)>(min_new_producers_num, std::abs(sched.shift));
+    if (s.resize_shift.value() < 0) {
+        min_new_producers_num -= std::min<decltype(min_new_producers_num)>(min_new_producers_num, std::abs(s.resize_shift.value()));
     }
     if (new_producers_num < min_new_producers_num) {
         return;
@@ -208,11 +211,11 @@ int64_t govern::get_target_emission_per_block(int64_t supply) const {
 void govern::setshift(int8_t shift) {
     eosio::check(schedule_size_shift_min <= shift && shift <= schedule_size_shift_max, "incorrect shift");
     require_auth(producers_name);
-    auto sched_state = schedule_resize_singleton(_self, _self.value);
-    auto sched = sched_state.get_or_default(structures::schedule_resize_info { .last_step = eosio::current_time_point() });
-    eosio::check(shift != sched.shift, "the shift has not changed");
-    sched.shift = shift;
-    sched_state.set(sched, _self);
+    auto state = state_singleton(_self, _self.value);
+    auto s = state.get(); // no default values, because it was created on the first block, errors can happens only in tests
+    eosio::check(shift != s.resize_shift.value(), "the shift has not changed");
+    s.resize_shift.emplace(shift);
+    state.set(s, _self);
 }
 
 void govern::promote_producers() {

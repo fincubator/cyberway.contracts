@@ -191,13 +191,9 @@ struct structures {
     };
     
     struct box {
-        uint64_t id;
-        name treasurer;
         name title;
         asset quantity;
-        uint64_t primary_key()const { return id; }
-        using key_t = std::tuple<name, name>;
-        key_t by_key()const { return std::make_tuple(treasurer, title); }
+        uint64_t primary_key()const { return title.value; }
     };
 };
 
@@ -246,9 +242,7 @@ struct structures {
 
     using losses_singleton [[eosio::order("id","asc")]] = eosio::singleton<"losses"_n, structures::losses>;
     
-    using box_key_index [[eosio::order("treasurer"), eosio::order("title")]] =
-        eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::box, structures::box::key_t, &structures::box::by_key> >;
-    using boxes [[eosio::order("id")]] = eosio::multi_index<"box"_n, structures::box, box_key_index>;
+    using boxes [[eosio::order("title")]] = eosio::multi_index<"box"_n, structures::box>;
 
     void update_stake_proxied(symbol_code token_code, name agent_name) {
         eosio::update_stake_proxied(token_code, agent_name, true);

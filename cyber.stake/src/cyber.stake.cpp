@@ -867,13 +867,10 @@ void stake::constrain(name treasurer, name title, asset quantity) {
     agents_idx.modify(treasurer_itr, name(), [&](auto& a) { a.provided += quantity.amount; });
     send_checkstake(treasurer, token_code);
     
-    boxes boxes_table(_self, _self.value);
-    auto boxes_idx = boxes_table.get_index<"bykey"_n>();
-    eosio::check(boxes_idx.find({treasurer, title}) == boxes_idx.end(), "non-unique title");
+    boxes boxes_table(_self, treasurer.value);
+    eosio::check(boxes_table.find(title.value) == boxes_table.end(), "non-unique title");
 
     boxes_table.emplace(treasurer, [&](auto& b) { b = {
-        .id = boxes_table.available_primary_key(),
-        .treasurer = treasurer,
         .title = title,
         .quantity = quantity
     };});
@@ -888,10 +885,9 @@ void stake::constrain(name treasurer, name title, asset quantity) {
 void stake::release(name treasurer, name title, name owner) {
     require_auth(config::box_name);
     
-    boxes boxes_table(_self, _self.value);
-    auto boxes_idx = boxes_table.get_index<"bykey"_n>();
-    auto box_itr = boxes_idx.find({treasurer, title});
-    eosio::check(box_itr != boxes_idx.end(), "SYSTEM: nothing to release");
+    boxes boxes_table(_self, treasurer.value);
+    auto box_itr = boxes_table.find(title.value);
+    eosio::check(box_itr != boxes_table.end(), "SYSTEM: nothing to release");
     
     auto quantity = box_itr->quantity;
     auto token_code = quantity.symbol.code();
@@ -907,7 +903,7 @@ void stake::release(name treasurer, name title, name owner) {
         agents_idx.modify(treasurer_itr, name(), [&](auto& a) { a.provided -= amount; });
     }
     
-    boxes_idx.erase(box_itr);
+    boxes_table.erase(box_itr);
     
     if (treasurer == owner) {
         return;

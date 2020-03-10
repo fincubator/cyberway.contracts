@@ -4,6 +4,7 @@
 #include <eosio/privileged.hpp>
 #include <common/util.hpp>
 #include <eosio/event.hpp>
+#include <boost/container/flat_set.hpp>
 
 using namespace cyber::config;
 
@@ -16,7 +17,7 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
     auto s = state.get_or_default(structures::state_info { .last_schedule_increase = eosio::current_time_point() });
 
     s.block_num++;
-    
+
     int64_t block_reward = 0;
     if (producer != config::internal_name) {
         auto supply     = eosio::token::get_supply    (config::token_name, system_token.code()).amount;
@@ -30,27 +31,21 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
         block_reward = safe_pct(cur_block_emission, config::block_reward_pct);
         s.funds += cur_block_emission - block_reward;
     }
-        
+
     balances balances_table(_self, _self.value);
-    
-    obliged_producers obliged_prods_table(_self, _self.value);
-    omissions omissions_table(_self, _self.value);
-    unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
-    
+    producers producers_table(_self, _self.value);
+
     if (producer != config::internal_name && s.block_num != 1) {
         int64_t just_confirmed_balance = 0;
-        auto u = unconfirmed_balances_table.find(producer.value);
-        if (u != unconfirmed_balances_table.end()) {
-            just_confirmed_balance = u->amount;
-            unconfirmed_balances_table.erase(u);
-        }
-        auto p = obliged_prods_table.find(producer.value);
-        if (p != obliged_prods_table.end()) {
-            obliged_prods_table.erase(p);
-        }
-        auto o = omissions_table.find(producer.value);
-        if (o != omissions_table.end()) {
-            omissions_table.erase(o);
+        auto utr = producers_table.find(producer.value);
+        if (utr != producers_table.end() && !utr->is_empty()) {
+            just_confirmed_balance = utr->unconfirmed_amount;
+            producers_table.modify(utr, eosio::same_payer, [&](auto& u) {
+                u.unconfirmed_amount = 0;
+                u.omission_resets = 0;
+                u.omission_count = 0;
+                u.is_oblidged = false;
+            });
         }
         auto b = balances_table.find(producer.value);
         if (b != balances_table.end()) {
@@ -65,7 +60,7 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
     }
     
     if (s.block_num % config::reward_interval == 0) {
-        reward_producers(balances_table, s);
+        reward_producers(producers_table, balances_table, s);
         reward_workers(s);
     }
     
@@ -76,7 +71,7 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
     // the schedule version temporarily has the binary extension type only for the upgrade phase
     if (schedule_version.has_value()) {
         if (s.schedule_version.has_value() && s.schedule_version.value() != schedule_version.value()) {
-            promote_producers();
+            promote_producers(producers_table);
         }
         s.schedule_version.emplace(schedule_version.value());
     }
@@ -92,22 +87,22 @@ void govern::reward_workers(structures::state_info& s) {
     }
 }
 
-void govern::reward_producers(balances& balances_table, structures::state_info& s) {
-    std::map<name, int64_t> rewards;
+void govern::reward_producers(producers& producers_table, balances& balances_table, structures::state_info& s) {
+    std::vector<std::pair<name, int64_t>> rewards;
+    rewards.reserve(config::max_producers_num + 16);
     for (auto i = balances_table.begin(); i != balances_table.end();) {
         if (i->amount) {
-            rewards[i->account] += i->amount;
+            rewards.emplace_back(i->account, i->amount);
         }
         i = balances_table.erase(i);
     }
     
     if (rewards.size()) {
         INLINE_ACTION_SENDER(cyber::stake, reward)(config::stake_name, {config::issuer_name, config::active_name},
-            {std::vector<std::pair<name, int64_t> >(rewards.begin(), rewards.end()), system_token});
+            {rewards, system_token});
     }
     
     auto top = stake::get_top(system_token.code(), s.required_producers_num + rewarded_for_votes_limit_displ, 0);
-    
     auto actual_elected_num = top.size();
     int64_t votes_sum = 0;
     for (const auto& t : top) {
@@ -120,31 +115,39 @@ void govern::reward_producers(balances& balances_table, structures::state_info& 
         return;
     }
     
-    std::map<name, int64_t> unconfirmed_rewards;
+    std::vector<std::pair<name, int64_t>> unconfirmed_rewards;
+    unconfirmed_rewards.reserve(actual_elected_num + 16);
     auto change = reward_of_elected;
-    for (size_t i = 0; i < actual_elected_num; i++) {
-        auto cur_reward = safe_prop(reward_of_elected, top[i].votes, votes_sum);
+    for (const auto& t : top) {
+        auto cur_reward = safe_prop(reward_of_elected, t.votes, votes_sum);
         if (cur_reward) {
-            unconfirmed_rewards[top[i].account] += cur_reward;
+            unconfirmed_rewards.emplace_back(t.account, cur_reward);
             change -= cur_reward;
         }
     }
     if (change) {
-        unconfirmed_rewards[top[s.block_num % actual_elected_num].account] += change;
+        auto idx = s.block_num % actual_elected_num;
+        if (idx >= unconfirmed_rewards.size()) {
+            unconfirmed_rewards.emplace_back(top[idx].account, change);
+        } else {
+            unconfirmed_rewards[idx].second += change;
+        }
     }
     s.funds -= reward_of_elected;
-    
-    unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
+
     for (auto& r : unconfirmed_rewards) {
-        auto b = unconfirmed_balances_table.find(r.first.value);
-        if (b != unconfirmed_balances_table.end()) {
-            unconfirmed_balances_table.modify(b, name(), [&](auto& b) { b.amount += r.second; } );
+        auto b = producers_table.find(r.first.value);
+        if (b != producers_table.end()) {
+            producers_table.modify(b, name(), [&](auto& b) {
+                b.unconfirmed_amount += r.second;
+            });
         }
         else {
-            unconfirmed_balances_table.emplace(_self, [&](auto& b) { b = structures::balance_struct {
-                .account = r.first,
-                .amount = r.second
-            };});
+            producers_table.emplace(_self, [&](auto& b) {
+                b.is_oblidged = false;
+                b.account = r.first;
+                b.unconfirmed_amount = r.second;
+            });
         }
     }
 }
@@ -178,7 +181,7 @@ void govern::propose_producers(structures::state_info& s) {
     }
     
     std::vector<eosio::producer_key> schedule;
-    schedule.reserve(new_producers_num);
+    schedule.reserve(new_producers_num + 16);
     for (const auto& t : new_producers) {
         schedule.emplace_back(eosio::producer_key{t.account, t.signing_key});
     }
@@ -187,7 +190,7 @@ void govern::propose_producers(structures::state_info& s) {
     }
     s.last_producers_num = new_producers_num;
     std::vector<name> accounts;
-    accounts.reserve(new_producers_num);
+    accounts.reserve(new_producers_num + 16);
     for (const auto& t : new_producers) {
         accounts.emplace_back(t.account);
     }
@@ -218,55 +221,70 @@ void govern::setshift(int8_t shift) {
     state.set(s, _self);
 }
 
-void govern::promote_producers() {
-    obliged_producers obliged_prods_table(_self, _self.value);
-    omissions omissions_table(_self, _self.value);
-    unconfirmed_balances unconfirmed_balances_table(_self, _self.value);
-    
-    for (auto i = obliged_prods_table.begin(); i != obliged_prods_table.end();) {
-        auto o = omissions_table.find(i->account.value);
-        if (o != omissions_table.end()) {
-            omissions_table.modify(o, name(), [&](auto& o) { o.count += 1; } );
-        }
-        else {
-            omissions_table.emplace(_self, [&](auto& o) { o = structures::omission_struct {
-                .account = i->account,
-                .count = 1
-            };});
-        }
-        
-        auto b = unconfirmed_balances_table.find(i->account.value);
-        if (b != unconfirmed_balances_table.end()) {
-            eosio::event(_self, "burnreward"_n, *b).send();
-            unconfirmed_balances_table.erase(b);
-        }
-        i = obliged_prods_table.erase(i);
+void govern::promote_producers(producers& producers_table) {
+    static constexpr auto token_code = system_token.code();
+    auto obliged_idx = producers_table.get_index<"byoblidged"_n>();
+    boost::container::flat_set<eosio::name> active_producers;
+
+    active_producers.reserve(config::max_producers_num + 16);
+    for (const auto& acc: eosio::get_active_producers()) {
+        active_producers.insert(acc);
     }
-    symbol_code token_code = system_token.code();
-    
-    auto omissions_idx = omissions_table.get_index<"bycount"_n>();
-    auto omission_itr = omissions_idx.lower_bound(std::numeric_limits<decltype(structures::omission_struct::count)>::max());
-    if (omission_itr != omissions_idx.end() && omission_itr->count >= config::omission_limit) {
-        if (omission_itr->resets >= config::resets_limit) {
+    for (auto itr = obliged_idx.begin(); itr != obliged_idx.end() && itr->is_oblidged; ) {
+        bool should_erase = false;
+        if (!cyber::stake::candidate_exists(itr->account, token_code)) {
+            should_erase = true;
+        } else if (itr->omission_resets >= config::resets_limit) {
             INLINE_ACTION_SENDER(cyber::stake, setproxylvl)(config::stake_name, {config::issuer_name, config::active_name},
-                {omission_itr->account, token_code, stake::get_max_level(token_code)}); // agent cannot disappear
-            omissions_idx.erase(omission_itr);
+                {itr->account, token_code, stake::get_max_level(token_code)}); // agent cannot disappear
+            should_erase = true;
         }
-        else {
-            if (cyber::stake::candidate_exists(omission_itr->account, token_code)) {
-                INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::issuer_name, config::active_name},
-                    {omission_itr->account, token_code, public_key{}});
+
+        auto atr = active_producers.find(itr->account);
+        if (should_erase) {
+            if (active_producers.end() != atr) {
+                active_producers.erase(atr);
             }
-            omissions_idx.modify(omission_itr, name(), [&](auto& o) {
-                o.count = 0;
-                o.resets += 1;
-            });
+            burn_reward(itr->account, itr->amount + itr->unconfirmed_amount);
+            itr = obliged_idx.erase(itr);
+            continue;
         }
+
+        burn_reward(itr->account, itr->unconfirmed_amount);
+
+        obliged_idx.modify(itr, eosio::same_payer, [&](auto& o){
+            if (active_producers.end() != atr) {
+                active_producers.erase(atr);
+            } else {
+                o.is_oblidged = false;
+            }
+
+            o.unconfirmed_amount = 0;
+            o.omission_count += 1;
+
+            if (o.omission_count >= config::omission_limit) {
+                INLINE_ACTION_SENDER(cyber::stake, setkey)(config::stake_name, {config::issuer_name, config::active_name},
+                    {o.account, token_code, public_key{}});
+
+                o.omission_count = 0;
+                o.omission_resets += 1;
+            }
+        });
+        ++itr;
     }
 
-    auto prods_accounts = eosio::get_active_producers();
-    for (const auto& acc : prods_accounts) {
-        obliged_prods_table.emplace(_self, [&](auto& p) { p = structures::producer_struct { .account = acc }; });
+    for (const auto& acc : active_producers) {
+        auto itr = producers_table.find(acc.value);
+        if (producers_table.end() == itr) {
+            producers_table.emplace(_self, [&](auto& p) {
+                p.account = acc;
+                p.is_oblidged = true;
+            });
+        } else if (!itr->is_oblidged) {
+            producers_table.modify(itr, eosio::same_payer, [&](auto& p) {
+                p.is_oblidged = true;
+            });
+        }
     }
 }
 

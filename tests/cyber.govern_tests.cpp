@@ -270,10 +270,10 @@ BOOST_FIXTURE_TEST_CASE(no_rewards_test, cyber_govern_tester) try {
     BOOST_CHECK(stake.get_agent(_whale, token._symbol)["balance"].as<int64_t>() > init_amount);
     BOOST_CHECK_EQUAL(stake.get_candidate(_bob, token._symbol)["signing_key"].as<public_key_type>(), public_key_type());
     
-    BOOST_CHECK(govern.get_balance(_alice, false) > 0);
+    BOOST_CHECK_GT(govern.get_balance(_alice, false), 0);
     BOOST_CHECK_EQUAL(govern.get_balance(_bob, false), -1);
-    BOOST_CHECK(govern.get_balance(_carol, false) > 0);
-    BOOST_CHECK(govern.get_balance(_whale, false) > 0);
+    BOOST_CHECK_GT(govern.get_balance(_carol, false), 0);
+    BOOST_CHECK_GT(govern.get_balance(_whale, false), 0);
     
     BOOST_CHECK_EQUAL(govern.get_balance(_alice), -1);
     BOOST_CHECK_EQUAL(govern.get_balance(_bob), -1);

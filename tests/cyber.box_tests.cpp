@@ -40,19 +40,22 @@ public:
 
     struct errors: contract_error_messages {
         const string no_staking = amsg("no staking for token");
-        const string no_box     = amsg("box does not exist");
-        const string box_already_exists     = amsg("such a box already exists");
-        const string not_empty     = amsg("the box is not empty");
-        const string not_enough     = amsg("not enough staked tokens");
+        const string no_box = amsg("box does not exist");
+        const string box_already_exists  = amsg("such a box already exists");
+        const string not_empty  = amsg("the box is not empty");
+        const string not_enough = amsg("not enough staked tokens");
         
-        const string non_unique  = amsg("non-unique title");
+        const string non_unique = amsg("non-unique title");
         
-        const string empty_transfer  = amsg("cannot transfer an empty box");
+        const string empty_transfer = amsg("cannot transfer an empty box");
+        const string empty_unpack = amsg("cannot unpack an empty box");
         const string self_transfer  = amsg("cannot transfer to self");
-        const string no_to_acc  = amsg("to account does not exist");
+        const string no_to_acc = amsg("to account does not exist");
         
-        const string no_balance  = amsg("owner balance does not exist");
-        const string not_owner  = amsg("only the owner can do it");
+        const string no_balance = amsg("owner balance does not exist");
+        const string not_owner = amsg("only the owner can do it");
+        const string incorrect_owner = amsg("incorrect owner");
+        
         
         string missing_authority(name acc) { return "missing authority of " + std::string(acc); };
 
@@ -117,9 +120,11 @@ BOOST_FIXTURE_TEST_CASE(stake_in_box_tests, cyber_box_tester) try {
     BOOST_CHECK_EQUAL(err.box_already_exists, box.create(stake_account_name, _whale, N(whalebox)));
     
     BOOST_CHECK_EQUAL(err.no_box, box.burn(stake_account_name, _whale, N(whalefox), _whale));
-    BOOST_CHECK_EQUAL(err.no_box, box.unpack(stake_account_name, _whale, N(whalefox), _whale));
-    BOOST_CHECK_EQUAL(err.missing_authority(_whale), box.unpack(stake_account_name, _whale, N(whalebox), _alice));
-    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(whalebox), _whale));
+    BOOST_CHECK_EQUAL(err.no_box, box.unpack(stake_account_name, _whale, N(whalefox), _whale, _whale));
+    
+    BOOST_CHECK_EQUAL(err.missing_authority(_whale), box.unpack(stake_account_name, _whale, N(whalebox), _whale, _alice));
+    BOOST_CHECK_EQUAL(err.incorrect_owner, box.unpack(stake_account_name, _whale, N(whalebox), _alice, _whale));
+    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(whalebox), _whale, _whale));
     
     produce_block();
     BOOST_CHECK_EQUAL(success(), stake.delegateuse(_whale, _alice, token.from_amount(provided)));
@@ -139,6 +144,7 @@ BOOST_FIXTURE_TEST_CASE(stake_in_box_tests, cyber_box_tester) try {
     BOOST_CHECK_EQUAL(success(), box.create(stake_account_name, _whale, N(whalebox)));
     
     BOOST_CHECK_EQUAL(err.empty_transfer, box.transfer(stake_account_name, _whale, N(alicebox), _whale, _alice, "", _whale));
+    BOOST_CHECK_EQUAL(err.empty_unpack, box.unpack(stake_account_name, _whale, N(alicebox), _whale, _whale));
     
     BOOST_CHECK_EQUAL(success(), stake.constrain(_whale, N(alicebox), asset(alice_box, token._symbol)));
     BOOST_CHECK_EQUAL(success(), stake.constrain(_whale, N(bobbox),   asset(bob_box,   token._symbol)));
@@ -161,9 +167,9 @@ BOOST_FIXTURE_TEST_CASE(stake_in_box_tests, cyber_box_tester) try {
     BOOST_CHECK_EQUAL(success(), box.transfer(stake_account_name, _whale, N(carolbox), _whale, _carol, "", _whale));
     BOOST_CHECK_EQUAL(err.self_transfer, box.transfer(stake_account_name, _whale, N(whalebox), _whale, _whale, "", _whale));
     
-    BOOST_CHECK_EQUAL(err.missing_authority(_alice), box.unpack(stake_account_name, _whale, N(alicebox), _whale));
+    BOOST_CHECK_EQUAL(err.missing_authority(_alice), box.unpack(stake_account_name, _whale, N(alicebox), _alice, _whale));
     
-    BOOST_CHECK_EQUAL(err.no_balance, box.unpack(stake_account_name, _whale, N(alicebox), _alice));
+    BOOST_CHECK_EQUAL(err.no_balance, box.unpack(stake_account_name, _whale, N(alicebox), _alice, _alice));
     
     BOOST_CHECK_EQUAL(success(), token.open(_alice, token._symbol, _alice));
     BOOST_CHECK_EQUAL(success(), token.open(_bob,   token._symbol, _bob));
@@ -172,22 +178,22 @@ BOOST_FIXTURE_TEST_CASE(stake_in_box_tests, cyber_box_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], balance);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - balance);
     
-    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(alicebox), _alice));
+    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(alicebox), _alice, _alice));
     
     BOOST_CHECK_EQUAL(alice_box, token.get_account(_alice)["balance"].as<asset>().get_amount());
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - alice_box);
     
-    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(bobbox), _bob));
+    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(bobbox), _bob, _bob));
     BOOST_CHECK_EQUAL(bob_box, token.get_account(_bob)["balance"].as<asset>().get_amount());
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - alice_box - bob_box);
     
-    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(whalebox), _whale));
+    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(whalebox), _whale, _whale));
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - alice_box - bob_box);
     
-    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(carolbox), _carol));
+    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(carolbox), _carol, _carol));
     BOOST_CHECK_EQUAL(carol_box, token.get_account(_carol)["balance"].as<asset>().get_amount());
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - alice_box - bob_box - carol_box);

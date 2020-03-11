@@ -26,12 +26,12 @@ struct structures {
         eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<structures::box, structures::box::key_t, &structures::box::by_key> >;
     using boxes [[eosio::order("id")]] = eosio::multi_index<"box"_n, structures::box, box_key_index>;
 
-    void erase_box(name contract, name treasurer, name title, bool release);
+    void erase_box(name contract, name treasurer, name title, name owner = name());
 public:
     using contract::contract;
     [[eosio::action]] void create(name contract, name treasurer, name title);
     [[eosio::action]] void packup(name contract, name treasurer, name title);
-    [[eosio::action]] void unpack(name contract, name treasurer, name title);
+    [[eosio::action]] void unpack(name contract, name treasurer, name title, name owner);
     [[eosio::action]] void burn(name contract, name treasurer, name title);
     [[eosio::action]] void transfer(name contract, name treasurer, name title, name from, name to, std::string memo);
     static inline name get_owner(name box_contract_account, name contract, name treasurer, name title) {

@@ -443,6 +443,6 @@ public:
     [[eosio::action]] void setautorcmode(symbol_code token_code, bool enabled);
     
     [[eosio::action]] void constrain(name treasurer, name title, asset quantity);
-    [[eosio::action]] void release(name treasurer, name title, name owner);
+    [[eosio::on_notify(CYBER_BOX"::unpack")]] void on_unpack(name contract, name treasurer, name title, name owner);
 };
 } /// namespace cyber

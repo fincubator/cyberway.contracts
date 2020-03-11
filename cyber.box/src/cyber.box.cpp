@@ -27,28 +27,24 @@ void box::packup(name contract, name treasurer, name title) {
     boxes_idx.modify(box_itr, name(), [&](auto& b) { b.empty = false; });
 }
 
-void box::erase_box(name contract, name treasurer, name title, bool release) {
+void box::erase_box(name contract, name treasurer, name title, name owner) {
     boxes boxes_table(_self, treasurer.value);
     auto boxes_idx = boxes_table.get_index<"bykey"_n>();
     auto box_itr = boxes_idx.find({contract, title});
     eosio::check(box_itr != boxes_idx.end(), "box does not exist");
+    eosio::check(!owner || owner == box_itr->owner, "incorrect owner");
+    eosio::check(!owner || !box_itr->empty, "cannot unpack an empty box");
     require_auth(box_itr->owner);
-    if (!box_itr->empty && release) {
-        eosio::action(
-            eosio::permission_level{_self, config::active_name},
-            contract, "release"_n,
-            std::make_tuple(treasurer, title, box_itr->owner)
-        ).send();
-    }
     boxes_idx.erase(box_itr);
 }
 
-void box::unpack(name contract, name treasurer, name title) {
-    erase_box(contract, treasurer, title, true);
+void box::unpack(name contract, name treasurer, name title, name owner) {
+    require_recipient(contract);
+    erase_box(contract, treasurer, title, owner);
 }
 
 void box::burn(name contract, name treasurer, name title) {
-    erase_box(contract, treasurer, title, false);
+    erase_box(contract, treasurer, title);
 }
 
 void box::transfer(name contract, name treasurer, name title, name from, name to, std::string memo) {

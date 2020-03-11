@@ -21,9 +21,9 @@ public:
         return push(N(packup), signer ? signer : contract,
             args()("contract", contract)("treasurer", treasurer)("title", title));
     }
-    action_result unpack(name contract, name treasurer, name title, name signer) {
+    action_result unpack(name contract, name treasurer, name title, name owner, name signer) {
         return push(N(unpack), signer,
-            args()("contract", contract)("treasurer", treasurer)("title", title));
+            args()("contract", contract)("treasurer", treasurer)("title", title)("owner", owner));
     }
     action_result burn(name contract, name treasurer, name title, name signer) {
         return push(N(burn), signer,

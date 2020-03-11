@@ -882,12 +882,12 @@ void stake::constrain(name treasurer, name title, asset quantity) {
     ).send();
 }
 
-void stake::release(name treasurer, name title, name owner) {
-    require_auth(config::box_name);
+void stake::on_unpack(name contract, name treasurer, name title, name owner) {
+    eosio::check(contract == _self, "SYSTEM: incorrect contract");
     
     boxes boxes_table(_self, treasurer.value);
     auto box_itr = boxes_table.find(title.value);
-    eosio::check(box_itr != boxes_table.end(), "SYSTEM: nothing to release");
+    eosio::check(box_itr != boxes_table.end(), "SYSTEM: nothing to unpack");
     
     auto quantity = box_itr->quantity;
     auto token_code = quantity.symbol.code();
@@ -953,7 +953,7 @@ void stake::release(name treasurer, name title, name owner) {
     eosio::check(eosio::token::balance_exist(::cyber::config::token_name, owner, token_code), "owner balance does not exist");
     
     INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {_self, config::active_name},
-        {_self, owner, quantity, "released tokens"});
+        {_self, owner, quantity, "unpacked tokens"});
 }
 
 } /// namespace cyber

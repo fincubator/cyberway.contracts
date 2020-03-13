@@ -4,6 +4,7 @@
 #include <eosio/privileged.hpp>
 #include <common/util.hpp>
 #include <eosio/event.hpp>
+#include <boost/container/flat_map.hpp>
 #include <boost/container/flat_set.hpp>
 
 using namespace cyber::config;
@@ -32,35 +33,29 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
         s.funds += cur_block_emission - block_reward;
     }
 
-    balances balances_table(_self, _self.value);
     producers producers_table(_self, _self.value);
 
     if (producer != config::internal_name && s.block_num != 1) {
-        int64_t just_confirmed_balance = 0;
         auto utr = producers_table.find(producer.value);
-        if (utr != producers_table.end() && !utr->is_empty()) {
-            just_confirmed_balance = utr->unconfirmed_amount;
+        if (utr != producers_table.end()) {
             producers_table.modify(utr, eosio::same_payer, [&](auto& u) {
+                u.amount += block_reward + u.unconfirmed_amount;
                 u.unconfirmed_amount = 0;
                 u.omission_resets = 0;
                 u.omission_count = 0;
                 u.is_oblidged = false;
             });
-        }
-        auto b = balances_table.find(producer.value);
-        if (b != balances_table.end()) {
-            balances_table.modify(b, name(), [&](auto& b) { b.amount += block_reward + just_confirmed_balance; } );
-        }
-        else {
-            balances_table.emplace(_self, [&](auto& b) { b = structures::balance_struct {
-                .account = producer,
-                .amount = block_reward + just_confirmed_balance
-            };});
+        } else if (block_reward > 0) {
+            producers_table.emplace(_self, [&](auto& u) {
+                u.account = producer;
+                u.amount = block_reward;
+                u.is_oblidged = false;
+            });
         }
     }
     
     if (s.block_num % config::reward_interval == 0) {
-        reward_producers(producers_table, balances_table, s);
+        reward_producers(producers_table, s);
         reward_workers(s);
     }
     
@@ -87,68 +82,121 @@ void govern::reward_workers(structures::state_info& s) {
     }
 }
 
-void govern::reward_producers(producers& producers_table, balances& balances_table, structures::state_info& s) {
-    std::vector<std::pair<name, int64_t>> rewards;
+void govern::burn_reward(const eosio::name& account, const int64_t& amount) const {
+    if (amount > 0) {
+        auto data = structures::balance_struct{account, amount};
+        eosio::event(_self, "burnreward"_n, data).send();
+    }
+}
+
+void govern::reward_producers(producers& producers_table, structures::state_info& s) {
+    static constexpr auto token_code = system_token.code();
+    std::vector<std::pair<eosio::name, int64_t>> unconfirmed_rewards;
+    std::vector<std::pair<eosio::name, int64_t>> rewards;
+
+    unconfirmed_rewards.reserve(config::max_producers_num + 16);
     rewards.reserve(config::max_producers_num + 16);
-    for (auto i = balances_table.begin(); i != balances_table.end();) {
-        if (i->amount) {
-            rewards.emplace_back(i->account, i->amount);
+
+    // the temporary decision only for the upgrade phase,
+    //   the balances table can be removed after migrating to the producers table
+    boost::container::flat_map<eosio::name, int64_t> old_rewards;
+    balances balances_table(_self, _self.value);
+
+    old_rewards.reserve(config::max_producers_num + 16);
+    for (auto itr = balances_table.begin(); itr != balances_table.end();) {
+        if (itr->amount) {
+            old_rewards.emplace(itr->account, itr->amount);
         }
-        i = balances_table.erase(i);
+        itr = balances_table.erase(itr);
     }
-    
-    if (rewards.size()) {
-        INLINE_ACTION_SENDER(cyber::stake, reward)(config::stake_name, {config::issuer_name, config::active_name},
-            {rewards, system_token});
-    }
-    
+
+    auto get_old_reward = [&](const eosio::name& account) -> int64_t {
+        int64_t amount = 0;
+        auto itr = old_rewards.find(account);
+        if (old_rewards.end() != itr) {
+            amount = itr->second;
+            old_rewards.erase(itr);
+        }
+        return amount;
+    };
+    // end of the temporary decision
+
     auto top = stake::get_top(system_token.code(), s.required_producers_num + rewarded_for_votes_limit_displ, 0);
-    auto actual_elected_num = top.size();
     int64_t votes_sum = 0;
     for (const auto& t : top) {
         votes_sum += t.votes;
     }
-    
-    auto reward_of_elected = safe_pct(s.funds, config::_100percent - config::workers_reward_pct);
-    
-    if (!votes_sum || !reward_of_elected) {
-        return;
-    }
-    
-    std::vector<std::pair<name, int64_t>> unconfirmed_rewards;
-    unconfirmed_rewards.reserve(actual_elected_num + 16);
-    auto change = reward_of_elected;
-    for (const auto& t : top) {
-        auto cur_reward = safe_prop(reward_of_elected, t.votes, votes_sum);
-        if (cur_reward) {
-            unconfirmed_rewards.emplace_back(t.account, cur_reward);
-            change -= cur_reward;
-        }
-    }
-    if (change) {
-        auto idx = s.block_num % actual_elected_num;
-        if (idx >= unconfirmed_rewards.size()) {
-            unconfirmed_rewards.emplace_back(top[idx].account, change);
-        } else {
-            unconfirmed_rewards[idx].second += change;
-        }
-    }
-    s.funds -= reward_of_elected;
 
-    for (auto& r : unconfirmed_rewards) {
-        auto b = producers_table.find(r.first.value);
-        if (b != producers_table.end()) {
-            producers_table.modify(b, name(), [&](auto& b) {
-                b.unconfirmed_amount += r.second;
-            });
+    auto reward_of_elected = safe_pct(s.funds, config::_100percent - config::workers_reward_pct);
+    if (votes_sum && reward_of_elected) {
+        s.funds -= reward_of_elected;
+
+        auto change = reward_of_elected;
+        for (const auto& t : top) {
+            auto cur_reward = safe_prop(reward_of_elected, t.votes, votes_sum);
+            if (cur_reward) {
+                unconfirmed_rewards.emplace_back(t.account, cur_reward);
+                change -= cur_reward;
+            } else {
+                break;
+            }
         }
-        else {
-            producers_table.emplace(_self, [&](auto& b) {
-                b.is_oblidged = false;
-                b.account = r.first;
-                b.unconfirmed_amount = r.second;
-            });
+
+        if (change) {
+            if (!unconfirmed_rewards.empty()) {
+                auto idx = s.block_num % unconfirmed_rewards.size();
+                unconfirmed_rewards[idx].second += change;
+            } else {
+                auto idx = s.block_num % top.size();
+                unconfirmed_rewards.emplace_back(top[idx].account, change);
+            }
         }
+
+        for (auto& r: unconfirmed_rewards) {
+            auto btr = producers_table.find(r.first.value);
+            int64_t amount = get_old_reward(r.first);
+
+            if (btr != producers_table.end()) {
+                producers_table.modify(btr, name(), [&](auto& b) {
+                    amount += b.amount;
+                    b.amount = 0;
+                    b.unconfirmed_amount += r.second;
+                });
+            } else {
+                producers_table.emplace(_self, [&](auto& b) {
+                    b.is_oblidged = false;
+                    b.account = r.first;
+                    b.unconfirmed_amount = r.second;
+                });
+            }
+
+            if (amount > 0) {
+                rewards.emplace_back(r.first, amount);
+            }
+        }
+    }
+
+    auto balances_idx = producers_table.get_index<"bybalance"_n>();
+    for (auto itr = balances_idx.begin(); itr != balances_idx.end() && itr->amount;) {
+        rewards.emplace_back(itr->account, itr->amount + get_old_reward(itr->account));
+        if (!cyber::stake::candidate_exists(itr->account, token_code)) {
+            burn_reward(itr->account, itr->unconfirmed_amount);
+            itr = balances_idx.erase(itr);
+        } else {
+            balances_idx.modify(itr, eosio::same_payer, [&](auto& u){
+                u.amount = 0;
+            });
+            ++itr;
+        }
+    }
+
+    for (const auto& r: old_rewards) {
+        rewards.emplace_back(r.first, r.second);
+    }
+
+    if (rewards.size()) {
+        INLINE_ACTION_SENDER(cyber::stake, reward)(config::stake_name, {config::issuer_name, config::active_name},
+            {rewards, system_token});
     }
 }
 

@@ -24,14 +24,9 @@ public:
      ////tables
     
     int64_t get_balance(account_name account, bool confirmed = true) {
-        if (confirmed) {
-            auto s = get_struct(_code, N(balance), account.value, "balance_struct");
-            return !s.is_null() ? s["amount"].as<int64_t>() : -1;
-        } else {
-            auto s = get_struct(_code, N(producer), account.value, "producer_struct");
-            auto r = !s.is_null() ? s["unconfirmed_amount"].as<int64_t>() : -1;
-            return (!r) ? (-1) : r;
-        }
+        auto s = get_struct(_code, N(producer), account.value, "producer_struct");
+        auto r = !s.is_null() ? s[confirmed ? "amount" : "unconfirmed_amount"].as<int64_t>() : -1;
+        return (!r) ? (-1) : r;
     }
     
     variant get_state()const {

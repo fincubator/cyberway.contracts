@@ -118,7 +118,8 @@ public:
         produce_block();
         auto emission = get_emission_per_block(rate);
         BOOST_CHECK_EQUAL(govern.get_target_emission_per_block(), emission);
-        BOOST_CHECK_EQUAL(govern.get_balance(_alice),
+        auto alice_balance = govern.get_balance(_alice);
+        BOOST_CHECK_EQUAL(alice_balance == -1 ? 0 : alice_balance,
             supply_amount != max_supply_amount ? safe_pct<int64_t>(cfg::block_reward_pct, emission) : 0);
         produce_block();
     }

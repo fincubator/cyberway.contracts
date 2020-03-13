@@ -64,12 +64,14 @@ struct structures {
     struct producer_struct {
         name account;
         bool is_oblidged = false;
+        int64_t amount = 0;
         int64_t unconfirmed_amount = 0;
         uint16_t omission_count = 0;
         uint16_t omission_resets = 0;
 
         uint64_t primary_key()const { return account.value; }
         bool by_oblidged()const { return is_oblidged; }
+        int64_t by_amount()const { return amount; }
 
         bool is_empty() const {
             return !unconfirmed_amount && !omission_count && !omission_resets && !is_oblidged;
@@ -81,12 +83,14 @@ struct structures {
     using balances [[eosio::order("account","asc")]] = eosio::multi_index<"balance"_n, structures::balance_struct>;
 
     using oblidged_index [[using eosio: order("is_oblidged","desc"), non_unique]] = eosio::indexed_by<"byoblidged"_n, eosio::const_mem_fun<structures::producer_struct, bool, &structures::producer_struct::by_oblidged> >;
-    using producers [[eosio::order("account","asc")]] = eosio::multi_index<"producer"_n, structures::producer_struct, oblidged_index>;
+    using balance_index [[using eosio: order("amount","desc"), non_unique]] = eosio::indexed_by<"bybalance"_n, eosio::const_mem_fun<structures::producer_struct, int64_t, &structures::producer_struct::by_amount> >;
+    using producers [[eosio::order("account","asc")]] = eosio::multi_index<"producer"_n, structures::producer_struct, oblidged_index, balance_index>;
     
     void promote_producers(producers& producers_table);
     void propose_producers(structures::state_info& s);
-    void reward_producers(producers& producers_table, balances& balances_table, structures::state_info& s);
+    void reward_producers(producers& producers_table, structures::state_info& s);
     void reward_workers(structures::state_info& s);
+    void burn_reward(const eosio::name& account, const int64_t& amount) const;
     int64_t get_target_emission_per_block(int64_t supply) const;
     
 public:

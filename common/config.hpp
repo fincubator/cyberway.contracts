@@ -31,6 +31,7 @@ static const auto worker_name = "cyber.worker"_n;
 static const auto names_name = "cyber.names"_n;
 static const auto producers_name = "cyber.prods"_n;
 static const auto internal_name = "cyber"_n;
+static const auto null_name = "cyber.null"_n;
 
 // permissions
 static const auto code_name = "cyber.code"_n;

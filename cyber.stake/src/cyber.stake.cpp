@@ -882,7 +882,7 @@ void stake::constrain(name treasurer, name title, asset quantity) {
     ).send();
 }
 
-void stake::on_unpack(name contract, name treasurer, name title, name owner) {
+void stake::erase_box(name contract, name treasurer, name title, name owner) {
     eosio::check(contract == _self, "SYSTEM: incorrect contract");
     
     boxes boxes_table(_self, treasurer.value);
@@ -954,6 +954,14 @@ void stake::on_unpack(name contract, name treasurer, name title, name owner) {
     
     INLINE_ACTION_SENDER(eosio::token, transfer)(config::token_name, {_self, config::active_name},
         {_self, owner, quantity, "unpacked tokens"});
+}
+
+void stake::on_unpack(name contract, name treasurer, name title, name owner) {
+    erase_box(contract, treasurer, title, owner);
+}
+
+void stake::on_burn(name contract, name treasurer, name title) {
+    erase_box(contract, treasurer, title, config::null_name);
 }
 
 } /// namespace cyber

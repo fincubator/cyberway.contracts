@@ -291,6 +291,7 @@ struct structures {
     void set_suspense(name ram_payer, susps& susps_table, susps_idx_t& susps_idx, symbol_code token_code, name account, name action_name, int delay);
     
     void send_checkstake(name account, symbol_code token_code);
+    void erase_box(name contract, name treasurer, name title, name owner);
 
 public:
 
@@ -444,5 +445,6 @@ public:
     
     [[eosio::action]] void constrain(name treasurer, name title, asset quantity);
     [[eosio::on_notify(CYBER_BOX"::unpack")]] void on_unpack(name contract, name treasurer, name title, name owner);
+    [[eosio::on_notify(CYBER_BOX"::burn")]] void on_burn(name contract, name treasurer, name title);
 };
 } /// namespace cyber

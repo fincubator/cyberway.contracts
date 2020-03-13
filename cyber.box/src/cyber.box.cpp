@@ -34,12 +34,15 @@ void box::erase_box(name contract, name treasurer, name title, name owner) {
     eosio::check(box_itr != boxes_idx.end(), "box does not exist");
     eosio::check(!owner || owner == box_itr->owner, "incorrect owner");
     eosio::check(!owner || !box_itr->empty, "cannot unpack an empty box");
+    if (!box_itr->empty) {
+        require_recipient(contract);
+    }
     require_auth(box_itr->owner);
     boxes_idx.erase(box_itr);
 }
 
 void box::unpack(name contract, name treasurer, name title, name owner) {
-    require_recipient(contract);
+    eosio::check(static_cast<bool>(owner), "owner not specified");
     erase_box(contract, treasurer, title, owner);
 }
 

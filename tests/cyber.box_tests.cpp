@@ -54,8 +54,8 @@ public:
         
         const string no_balance = amsg("owner balance does not exist");
         const string not_owner = amsg("only the owner can do it");
+        const string owner_not_specified = amsg("owner not specified");
         const string incorrect_owner = amsg("incorrect owner");
-        
         
         string missing_authority(name acc) { return "missing authority of " + std::string(acc); };
 
@@ -189,12 +189,16 @@ BOOST_FIXTURE_TEST_CASE(stake_in_box_tests, cyber_box_tester) try {
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - alice_box - bob_box);
     
+    BOOST_CHECK_EQUAL(err.owner_not_specified, box.unpack(stake_account_name, _whale, N(whalebox), name(), _whale));
     BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(whalebox), _whale, _whale));
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - alice_box - bob_box);
     
-    BOOST_CHECK_EQUAL(success(), box.unpack(stake_account_name, _whale, N(carolbox), _carol, _carol));
-    BOOST_CHECK_EQUAL(carol_box, token.get_account(_carol)["balance"].as<asset>().get_amount());
+    BOOST_CHECK_EQUAL(err.no_balance, box.burn(stake_account_name, _whale, N(carolbox), _carol));
+    BOOST_CHECK_EQUAL(success(), token.open(cfg::null_name, token._symbol, _carol));
+    BOOST_CHECK_EQUAL(success(), box.burn(stake_account_name, _whale, N(carolbox), _carol));
+    BOOST_CHECK_EQUAL(0, token.get_account(_carol)["balance"].as<asset>().get_amount());
+    BOOST_CHECK_EQUAL(carol_box, token.get_account(cfg::null_name)["balance"].as<asset>().get_amount());
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["balance"], 0);
     BOOST_CHECK_EQUAL(stake.get_agent(_whale, token._symbol)["proxied"], staked - alice_box - bob_box - carol_box);
 

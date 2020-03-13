@@ -12,7 +12,8 @@ namespace eosio {
 
          [[eosio::action]]
          void propose(ignore<name> proposer, ignore<name> proposal_name,
-               ignore<std::vector<permission_level>> requested, ignore<transaction> trx);
+               ignore<std::vector<permission_level>> requested, ignore<transaction> trx,
+               ignore<const eosio::binary_extension<std::string>> description);
          [[eosio::action]]
          void approve( name proposer, name proposal_name, permission_level level,
                        const eosio::binary_extension<eosio::checksum256>& proposal_hash );
@@ -21,35 +22,29 @@ namespace eosio {
          [[eosio::action]]
          void cancel( name proposer, name proposal_name, name canceler );
          [[eosio::action]]
+         void schedule( name proposer, name proposal_name, name actor );
+         [[eosio::action]]
          void exec( name proposer, name proposal_name, name executer );
          [[eosio::action]]
          void invalidate( name account );
 
       private:
-         struct [[eosio::table]] proposal {
+         struct proposal {
             name                            proposal_name;
             std::vector<char>               packed_transaction;
 
             uint64_t primary_key()const { return proposal_name.value; }
          };
 
-         typedef eosio::multi_index< "proposal"_n, proposal > proposals;
-
-         struct [[eosio::table]] old_approvals_info {
-            name                            proposal_name;
-            std::vector<permission_level>   requested_approvals;
-            std::vector<permission_level>   provided_approvals;
-
-            uint64_t primary_key()const { return proposal_name.value; }
-         };
-         typedef eosio::multi_index< "approvals"_n, old_approvals_info > old_approvals;
+         using proposals [[eosio::order("proposal_name")]] =
+            eosio::multi_index<"proposal"_n, proposal>;
 
          struct approval {
             permission_level level;
             time_point       time;
          };
 
-         struct [[eosio::table]] approvals_info {
+         struct approvals_info {
             uint8_t                 version = 1;
             name                    proposal_name;
             //requested approval doesn't need to cointain time, but we want requested approval
@@ -60,16 +55,30 @@ namespace eosio {
 
             uint64_t primary_key()const { return proposal_name.value; }
          };
-         typedef eosio::multi_index< "approvals2"_n, approvals_info > approvals;
 
-         struct [[eosio::table]] invalidation {
+         using approvals [[eosio::order("proposal_name")]] =
+            eosio::multi_index<"approvals2"_n, approvals_info> ;
+
+         struct invalidation {
             name         account;
             time_point   last_invalidation_time;
 
             uint64_t primary_key() const { return account.value; }
          };
 
-         typedef eosio::multi_index< "invals"_n, invalidation > invalidations;
+         using invalidations [[eosio::order("account")]] =
+            eosio::multi_index<"invals"_n, invalidation>;
+
+         struct proposal_wait {
+            name proposal_name;
+            time_point_sec started;
+
+            uint64_t primary_key()const { return proposal_name.value; }
+         };
+
+         using waits [[eosio::order("proposal_name")]] = eosio::multi_index<"waits"_n, proposal_wait> ;
+
+         void check_proposal_authorization(const proposal &prop, const approvals_info &apps);
    };
 
 } /// namespace eosio

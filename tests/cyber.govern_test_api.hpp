@@ -95,8 +95,8 @@ public:
         
         wait_irreversible_block(proposed_schedule_block_num, disabled_producers);
         wait_irreversible_block(_tester->control->head_block_num(), disabled_producers);
-        BOOST_REQUIRE(_tester->control->head_block_header().schedule_version == prev_version);
-        BOOST_REQUIRE(get_block_offset() == prev_block_offset);
+        BOOST_REQUIRE_EQUAL(_tester->control->head_block_header().schedule_version, prev_version);
+        BOOST_REQUIRE_EQUAL(get_block_offset(), prev_block_offset);
         
         BOOST_REQUIRE(_tester->control->pending_block_state()->active_schedule.version == prev_version + static_cast<int>(change_version));
         auto ret = _tester->control->head_block_num() - prev_block;

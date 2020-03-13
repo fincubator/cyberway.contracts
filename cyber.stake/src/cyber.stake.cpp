@@ -9,8 +9,6 @@
 #include <eosio/system.hpp>
 #include <algorithm>
 #include <cyber.stake/cyber.stake.hpp>
-#include <cyber.token/cyber.token.hpp>
-#include <common/dispatchers.hpp>
 #include <common/parameter_ops.hpp>
 
 namespace cyber {
@@ -252,9 +250,10 @@ void stake::on_transfer(name from, name to, asset quantity, std::string memo) {
     auto agent = agents_idx.find(std::make_tuple(token_code, account));
     if (agent == agents_idx.end()) {
         emplace_agent(account, agents_table, param, from);
-        agent = agents_idx.find(std::make_tuple(token_code, account));
     }
     update_stake_proxied(token_code, account);
+    agents_table.flush_cache();
+    agent = agents_idx.find(std::make_tuple(token_code, account));
 
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
@@ -317,6 +316,32 @@ void stake::setminstaked(name account, symbol_code token_code, int64_t min_own_s
     modify_agent(account, token_code, [min_own_staked](auto& a) { a.min_own_staked = min_own_staked; });
 }
 
+void stake::check_suspense(susps& susps_table, susps_idx_t& susps_idx, symbol_code token_code, name account, name action_name) {
+    auto susps_itr = susps_idx.find(std::make_tuple(token_code, account, action_name));
+    if (susps_itr != susps_idx.end()) {
+        eosio::check(time_point_sec(eosio::current_time_point()) >= susps_itr->expiration_time, "action is temporarily unavailable");
+        susps_idx.erase(susps_itr);
+    }
+}
+
+void stake::set_suspense(name ram_payer, susps& susps_table, susps_idx_t& susps_idx, symbol_code token_code, name account, name action_name, int delay) {
+    auto susps_itr = susps_idx.find(std::make_tuple(token_code, account, action_name));
+    if (susps_itr != susps_idx.end()) {
+        susps_idx.modify(susps_itr, name(), [&](auto& s) {
+            s.expiration_time = std::max(s.expiration_time, time_point_sec(eosio::current_time_point() + seconds(delay))); 
+        });
+    }
+    else {
+        susps_table.emplace(ram_payer, [&]( auto &s ) { s = structures::suspense {
+            .id = susps_table.available_primary_key(),
+            .token_code = token_code,
+            .account = account,
+            .action_name = action_name,
+            .expiration_time = eosio::current_time_point() + seconds(delay)
+        };});
+    }
+}
+
 void stake::setkey(name account, symbol_code token_code, std::optional<public_key> signing_key = std::nullopt) {
     staking_exists(token_code);
     auto actual_signing_key = signing_key.value_or(public_key{});
@@ -328,33 +353,51 @@ void stake::setkey(name account, symbol_code token_code, std::optional<public_ke
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
     eosio::check(!agent->proxy_level, account.to_string() + " is not a candidate");
-    bool has_self_auth = has_auth(_self);
+    
+    auto issuer = eosio::token::get_issuer(config::token_name, token_code);
+    bool has_issuer_auth = has_auth(issuer);
     
     candidates candidates_table(table_owner, table_owner.value);
     auto cands_idx = candidates_table.get_index<"bykey"_n>();
     auto cand = cands_idx.find(std::make_tuple(token_code, account));
     eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
     
+    susps susps_table(_self, _self.value);
+    auto susps_idx = susps_table.get_index<"bykey"_n>();
+    auto action_name = "setkey"_n;
+    
     if (actual_signing_key != public_key{}) {
         require_auth(account);
-        eosio::check(time_point_sec(eosio::current_time_point()) >= cand->latest_pick, "action is temporarily unavailable");
+        check_suspense(susps_table, susps_idx, token_code, account, action_name);
         agent->check_own_staked(_self, min_own_staked_for_election);
     }
-    else if (!has_self_auth && agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
+    else if (!has_issuer_auth && agent->min_own_staked >= min_own_staked_for_election && agent->get_own_funds() >= agent->min_own_staked) {
         require_auth(account);
     }
     
-    cands_idx.modify(cand, name(), [actual_signing_key, has_self_auth](auto& a) {
+    cands_idx.modify(cand, name(), [actual_signing_key](auto& a) {
         a.signing_key = actual_signing_key;
         a.enabled = actual_signing_key != public_key{};
-        if (has_self_auth && !a.enabled) {
-            a.latest_pick = eosio::current_time_point() + seconds(config::key_recovery_delay);
-        }
     });
+    
+    if (has_issuer_auth && !cand->enabled) {
+        set_suspense(issuer, susps_table, susps_idx, token_code, account, action_name, config::key_recovery_delay);
+    }
 }
 
 void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
-    require_auth(account);
+    auto issuer = eosio::token::get_issuer(config::token_name, token_code);
+    bool has_issuer_auth = has_auth(issuer);
+    
+    susps susps_table(_self, _self.value);
+    auto susps_idx = susps_table.get_index<"bykey"_n>();
+    auto action_name = "setproxylvl"_n;
+    
+    if (!has_issuer_auth) {
+        require_auth(account);
+        check_suspense(susps_table, susps_idx, token_code, account, action_name);
+    }
+    
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
 
@@ -362,7 +405,7 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     agents agents_table(table_owner, table_owner.value);
     auto agents_idx = agents_table.get_index<"bykey"_n>();
     auto agent = get_agent_itr(token_code, agents_idx, account);
-    eosio::check(level != agent->proxy_level, "proxy level has not been changed");
+    eosio::check(has_issuer_auth || level != agent->proxy_level, "proxy level has not been changed");
     grants grants_table(table_owner, table_owner.value);
     auto grants_idx = grants_table.get_index<"bykey"_n>();
     uint8_t proxies_num = 0;
@@ -379,7 +422,6 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
     if (!agent->proxy_level && level) {
         auto cand = cands_idx.find(std::make_tuple(token_code, account));
         eosio::check(cand != cands_idx.end(), ("SYSTEM: candidate " + account.to_string() + " doesn't exist").c_str());
-        eosio::check(time_point_sec(eosio::current_time_point()) >= cand->latest_pick, "action is temporarily unavailable");
         cands_idx.erase(cand);
 
         stats stats_table(table_owner, table_owner.value);
@@ -403,7 +445,11 @@ void stake::setproxylvl(name account, symbol_code token_code, uint8_t level) {
         a.proxy_level = level;
     });
     agent->check_own_staked(_self, param.min_own_staked_for_election);
-} 
+    
+    if (has_issuer_auth) {
+        set_suspense(issuer, susps_table, susps_idx, token_code, account, action_name, config::proxylvl_recovery_delay);
+    }
+}
  
 void stake::create(symbol token_symbol, std::vector<uint8_t> max_proxies, int64_t depriving_window, int64_t min_own_staked_for_election)
 {
@@ -485,6 +531,20 @@ void stake::updatefunds(name account, symbol_code token_code) {
     params params_table(table_owner, table_owner.value);
     const auto& param = params_table.get(token_code.raw(), "no staking for token");
     update_stake_proxied(token_code, account);
+}
+
+void stake::suspendcand(name account, symbol_code token_code) {
+    //require_auth(anyone);
+    auto issuer = eosio::token::get_issuer(config::token_name, token_code);
+    
+    candidates candidates_table(table_owner, table_owner.value);
+    auto cands_idx = candidates_table.get_index<"bykey"_n>();
+    auto cand = cands_idx.find(std::make_tuple(token_code, account));
+    eosio::check(cand != cands_idx.end(), "candidate doesn't exist");
+    eosio::check(cand->latest_pick < eosio::current_time_point() - eosio::seconds(config::max_no_pick_period), "candidate is active");
+    
+    INLINE_ACTION_SENDER(cyber::stake, setproxylvl)(config::stake_name, {issuer, config::active_name},
+        {account, token_code, get_max_level(token_code)});
 }
 
 void stake::reward(std::vector<std::pair<name, int64_t> > rewards, symbol sym) {
@@ -603,7 +663,7 @@ void stake::update_provided(name grantor_name, name recipient_name, asset quanti
             provs_index.modify(prov_itr, name(), [&](auto& p) { p.amount += quantity.amount; });
         }
         else {
-            provs_table.emplace(grantor_name, [&]( auto &item ) { item = structures::provision {
+            provs_table.emplace(grantor_name, [&]( auto &item ) { item = structures::provision_struct {
                 .id = provs_table.available_primary_key(),
                 .token_code = token_code,
                 .grantor_name = grantor_name,
@@ -627,7 +687,7 @@ void stake::update_provided(name grantor_name, name recipient_name, asset quanti
             });
         }
         else {
-            payouts_table.emplace(grantor_name, [&]( auto &item ) { item = structures::prov_payout {
+            payouts_table.emplace(grantor_name, [&]( auto &item ) { item = structures::prov_payout_struct {
                 .id = provs_table.available_primary_key(),
                 .token_code = token_code,
                 .grantor_name = grantor_name,
@@ -677,14 +737,103 @@ void stake::claim(name grantor_name, name recipient_name, symbol_code token_code
 
     agents_idx.modify(grantor, name(), [&](auto& a) { a.provided -= payout_itr->amount; });
     payouts_index.erase(payout_itr);
+}
 
+void stake::setautorc(name account, symbol_code token_code, bool break_fee_enabled, bool break_min_stake_enabled) {
+    require_auth(account);
+    staking_exists(token_code);
+    
+    agents agents_table(table_owner, table_owner.value);
+    auto agents_idx = agents_table.get_index<"bykey"_n>();
+    get_agent_itr(token_code, agents_idx, account); //checking that the agent exists
+    
+    autorcs autorcs_table(table_owner, table_owner.value);
+    auto autorcs_idx = autorcs_table.get_index<"bykey"_n>();
+    autorcs_idx.get(std::make_tuple(token_code, name()), "custom auto recall mode is disabled for this token");
+    
+    if (!break_fee_enabled && !break_min_stake_enabled) {
+        auto autorc_itr = autorcs_idx.find(std::make_tuple(token_code, account));
+        eosio::check(autorc_itr != autorcs_idx.end(), "no params changed");
+        autorcs_idx.erase(autorc_itr);
+    }
+    else {
+        auto autorc_itr = autorcs_idx.find(std::make_tuple(token_code, account));
+        if (autorc_itr != autorcs_idx.end()) {
+            eosio::check(break_fee_enabled != autorc_itr->break_fee_enabled || break_min_stake_enabled != autorc_itr->break_min_stake_enabled, "no params changed");
+            autorcs_idx.modify(autorc_itr, account, [&](auto& p) {
+                p.break_fee_enabled = break_fee_enabled;
+                p.break_min_stake_enabled = break_min_stake_enabled;
+            });
+        }
+        else {
+            autorcs_table.emplace(account, [&](auto& p) { p = {
+                .id = autorcs_table.available_primary_key(),
+                .token_code = token_code,
+                .account = account,
+                .break_fee_enabled = break_fee_enabled,
+                .break_min_stake_enabled = break_min_stake_enabled
+            };});
+        }
+    }
+}
+
+void stake::setautorcmode(symbol_code token_code, bool enabled) {
+    auto issuer = eosio::token::get_issuer(config::token_name, token_code);
+    require_auth(issuer);
+    staking_exists(token_code);
+    
+    autorcs autorcs_table(table_owner, table_owner.value);
+    auto autorcs_idx = autorcs_table.get_index<"bykey"_n>();
+    auto autorc_itr = autorcs_idx.find(std::make_tuple(token_code, name())); 
+    if (enabled) {
+        eosio::check(autorc_itr == autorcs_idx.end(), "custom auto recall mode is already enabled for this token");
+        autorcs_table.emplace(issuer, [&](auto& p) { p = {
+            .id = autorcs_table.available_primary_key(),
+            .token_code = token_code,
+            .account = name()
+        };});
+    }
+    else {
+        eosio::check(autorc_itr != autorcs_idx.end(), "custom auto recall mode is already disabled for this token");
+        autorcs_idx.erase(autorc_itr);
+    }
+}
+
+void stake::returnlosses() {
+    auto losses_state = losses_singleton(_self, _self.value);
+    eosio::check(!losses_state.exists(), "losses already have been returned");
+
+    agents agents_table(table_owner, table_owner.value);
+    auto agents_idx = agents_table.get_index<"bykey"_n>();
+    auto token_code = eosio::symbol_code("CYBER");
+    int64_t total = 0;
+
+    auto return_loss = [&](const eosio::name account, const int64_t amount) {
+        auto agent = agents_idx.find(std::make_tuple(token_code, account));
+        eosio::check(agent != agents_idx.end(), "agent doesn't exist");
+        agents_idx.modify(agent, eosio::same_payer, [&](auto& a) {
+            a.balance += amount;
+        });
+        total += amount;
+    };
+
+    // account: mike2mike@golos trx: f039154469c34af0fb5f90aed0e383c86304d7e3059a841f8fa52a707d688c64
+    return_loss("dsqy4k5ym3uk"_n, 10);
+
+    // account: ltrack@golos trx: 8f373abe3429bb44e97c26fbf2d4d40dfc71007a7063c31ee3f710eb7a7fbcb8
+    return_loss("ym2imjop4l5n"_n, 16748);
+
+    // account: drugan7@golos trx: 55bb2a8a9540026f7f7a5db96eccc999e85f55a27761f73846b7017a21862f8c
+    return_loss("rzi4tcizzvyw"_n, 3236);
+
+    // account: gunblade trx: 3c54eecfe65722ab5817433ed7cbffbaa847b62ef0a1ce0abab9cc3f83ff96ec
+    return_loss("xt351mrztghr"_n, 826);
+
+    structures::losses s;
+    s.time = eosio::current_time_point();
+    s.token_code = token_code;
+    s.total = total;
+    losses_state.set(s, _self);
 }
 
 } /// namespace cyber
-
-DISPATCH_WITH_TRANSFER(cyber::stake, cyber::config::token_name, on_transfer,
-    (create)(enable)(open)(delegatevote)(setgrntterms)(recallvote)(withdraw)
-    (setproxylvl)(setproxyfee)(setminstaked)(setkey)
-    (updatefunds)(reward)(pick)
-    (delegateuse)(recalluse)(claim)
-)

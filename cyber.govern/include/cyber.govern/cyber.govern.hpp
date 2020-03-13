@@ -14,7 +14,7 @@ using eosio::time_point_sec;
 class [[eosio::contract("cyber.govern")]] govern : public contract {
 
 struct structures {
-    struct [[eosio::table("state")]] state_info {
+    struct state_info {
         time_point_sec last_schedule_increase;
         uint32_t block_num = 0;
         int64_t target_emission_per_block = 0;
@@ -24,43 +24,44 @@ struct structures {
         uint16_t last_producers_num = 1;
     };
     
-    struct [[eosio::table]] schedule_resize_info {
+    struct schedule_resize_info {
         time_point_sec last_step;
         int8_t shift = 1;
     };
     
-    struct [[eosio::table]] balance {
+    struct [[using eosio: event("burnreward"), contract("cyber.govern")]] balance_struct {
         name account;
         int64_t amount;
         uint64_t primary_key()const { return account.value; }
     };
     
-    struct [[eosio::table]] producer {
+    struct producer_struct {
         name account;
         uint64_t primary_key()const { return account.value; }
     };
     
-    struct [[eosio::table]] pending_producers_state {
+    struct pending_producers_info {
         std::vector<name> accounts;
     };
     
-    struct [[eosio::table]] omission {
+    struct omission_struct {
         name account;
         uint16_t count;
+        uint16_t resets = 0;
         uint64_t primary_key()const { return account.value; }
         uint16_t by_count()const { return count; }
     };
 };
-    using state_singleton = eosio::singleton<"governstate"_n, structures::state_info>;
-    using schedule_resize_singleton = eosio::singleton<"schedresize"_n, structures::schedule_resize_info>;
-    using balances = eosio::multi_index<"balance"_n, structures::balance>;
-    using unconfirmed_balances = eosio::multi_index<"uncbalance"_n, structures::balance>;
-    using obliged_producers = eosio::multi_index<"obligedprod"_n, structures::producer>;
-    using pending_producers = eosio::singleton<"pendingprods"_n, structures::pending_producers_state>;
+
+    using state_singleton [[eosio::order("id","asc")]] = eosio::singleton<"governstate"_n, structures::state_info>;
+    using schedule_resize_singleton [[eosio::order("id","asc")]] = eosio::singleton<"schedresize"_n, structures::schedule_resize_info>;
+    using balances [[eosio::order("account","asc")]] = eosio::multi_index<"balance"_n, structures::balance_struct>;
+    using unconfirmed_balances [[eosio::order("account","asc")]] = eosio::multi_index<"uncbalance"_n, structures::balance_struct>;
+    using obliged_producers [[eosio::order("account","asc")]] = eosio::multi_index<"obligedprod"_n, structures::producer_struct>;
+    using pending_producers [[eosio::order("id","asc")]] = eosio::singleton<"pendingprods"_n, structures::pending_producers_info>;
     
-    using omission_id_index = eosio::indexed_by<"omissionid"_n, eosio::const_mem_fun<structures::omission, uint64_t, &structures::omission::primary_key> >;
-    using omission_count_index = eosio::indexed_by<"bycount"_n, eosio::const_mem_fun<structures::omission, uint16_t, &structures::omission::by_count> >;
-    using omissions = eosio::multi_index<"omission"_n, structures::omission, omission_id_index, omission_count_index>;
+    using omission_count_index [[using eosio: order("count","desc"), non_unique]] = eosio::indexed_by<"bycount"_n, eosio::const_mem_fun<structures::omission_struct, uint16_t, &structures::omission_struct::by_count> >;
+    using omissions [[eosio::order("account","asc")]] = eosio::multi_index<"omission"_n, structures::omission_struct, omission_count_index>;
     
     void maybe_promote_producers();
     void propose_producers(structures::state_info& s);

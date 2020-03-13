@@ -30,11 +30,15 @@ else()
    set(TEST_BUILD_TYPE ${CMAKE_BUILD_TYPE})
 endif()
 
+macro(install_contract TARGET)
+   install (TARGETS ${TARGET}.wasm DESTINATION ${CMAKE_INSTALL_PREFIX}/${TARGET}/)
+   install (FILES ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}.abi DESTINATION ${CMAKE_INSTALL_PREFIX}/${TARGET}/)
+endmacro()
+
 macro(add_contract_with_abi TARGET ABIFILE)
    add_executable( ${TARGET}.wasm ${ARGN} )
    configure_file(${ABIFILE} ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}.abi COPYONLY)
-   install (TARGETS ${TARGET}.wasm DESTINATION ${CMAKE_INSTALL_PREFIX}/${TARGET}/)
-   install (FILES ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}.abi DESTINATION ${CMAKE_INSTALL_PREFIX}/${TARGET}/)
+   install_contract(TARGET)
 endmacro()
 
 add_subdirectory(cyber.bios)
@@ -45,6 +49,8 @@ add_subdirectory(cyber.stake)
 add_subdirectory(cyber.govern)
 add_subdirectory(cyber.rejector)
 add_subdirectory(cyber.incomereject)
+
+add_subdirectory(scripts/base-genesis)
 
 if (APPLE)
    set(OPENSSL_ROOT "/usr/local/opt/openssl")

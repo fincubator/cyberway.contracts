@@ -1,9 +1,21 @@
 steps:
   - label: ":docker: build docker image"
-    command: ".buildkite/steps/build-image.sh"
-
+    command: 
+        - ".buildkite/steps/build-image.sh"
+        - ".buildkite/steps/upload-image.sh"
   - wait
 
   - label: ":cop::skin-tone-2: deploy check"
     command: ".buildkite/steps/deploy-test.sh"
-    timeout: 20
+    timeout: 30
+
+  - wait
+
+  - label: ":floppy-disk: publish image"
+    command: ".buildkite/steps/publish-image.sh"
+    branches: "master develop ci-* v*.*.*"
+
+  - wait
+
+  - label: ":slack:"
+    command: ".buildkite/steps/slack.sh \"Pipeline complete successfully: ${BUILDKITE_MESSAGE}\" \"good\""

@@ -7,6 +7,8 @@
 #include <eosio/producer_schedule.hpp>
 #include <eosio/singleton.hpp>
 #include <eosio/time.hpp>
+#include <cyber.token/cyber.token.hpp>
+#include <common/dispatchers.hpp>
 
 namespace cyber {
    using eosio::permission_level;
@@ -63,20 +65,22 @@ namespace cyber {
    };
 
    class [[eosio::contract("cyber.bios")]] bios : public contract {
-      struct [[eosio::table("state")]] state_info {
+      struct state_info {
           time_point_sec last_close_bid;
       };
-      using state_singleton = eosio::singleton<"biosstate"_n, state_info>;
+      using state_singleton [[eosio::order("id","asc")]] =
+        eosio::singleton<"biosstate"_n, state_info>;
 
-      struct [[eosio::table, eosio::contract("cyber.bios")]] bid_refund {
+      struct bid_refund {
         name         bidder;
         eosio::asset amount;
 
         uint64_t primary_key()const { return bidder.value; }
       };
-      typedef eosio::multi_index< "bidrefunds"_n, bid_refund > bid_refund_table;
+      using bid_refund_table [[eosio::order("bidder","asc")]] =
+        eosio::multi_index<"bidrefunds"_n, bid_refund>;
 
-      struct [[eosio::table, eosio::contract("cyber.bios")]] name_bid {
+      struct name_bid {
         name              newname;
         name              high_bidder;
         int64_t           high_bid = 0; ///< negative high_bid == closed auction waiting to be claimed
@@ -85,10 +89,27 @@ namespace cyber {
         uint64_t primary_key()const { return newname.value;                    }
         uint64_t by_high_bid()const { return static_cast<uint64_t>(-high_bid); }
       };
-      typedef eosio::multi_index< "namebids"_n, name_bid,
-                                  eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<name_bid, uint64_t, &name_bid::by_high_bid>  >
-                                > name_bid_table;
-
+      using by_high [[using eosio: order("high_bid","desc"), non_unique]] =
+        eosio::indexed_by<"highbid"_n, eosio::const_mem_fun<name_bid, uint64_t, &name_bid::by_high_bid>>;
+      using name_bid_table [[eosio::order("newname","asc")]] =
+        eosio::multi_index<"namebids"_n, name_bid, by_high>;
+        
+      struct auto_recall {
+        uint64_t id;
+        eosio::symbol_code token_code;
+        name account;
+        bool break_fee_enabled = false;
+        bool break_min_stake_enabled = false;
+        uint64_t primary_key()const { return id; }
+        using key_t = std::tuple<eosio::symbol_code, name>;
+        key_t by_key()const { return std::make_tuple(token_code, account); }
+      };
+      using autorc_key_index [[using eosio: order("token_code"), order("account")]] =
+        eosio::indexed_by<"bykey"_n, eosio::const_mem_fun<auto_recall, auto_recall::key_t, &auto_recall::by_key> >;
+      using autorcs [[eosio::order("id")]] =
+        eosio::multi_index<"stake.autorc"_n, auto_recall, autorc_key_index>;
+      void autorcs_dummy() { autorcs autorcs_tabl(_self, _self.value); } // an ugly way to make abi appear
+    
          void check_stake(name account);
       public:
          using contract::contract;
@@ -159,9 +180,12 @@ namespace cyber {
          void bidrefund( name bidder );
 
          [[eosio::action]] void onblock(ignore<block_header> header);
-         
-         void on_stake_withdraw(name account, asset quantity);
-         void on_stake_provide(name provider_name, name consumer_name, asset quantity);
+
+         [[eosio::action]]
+         void providebw(name provider, name account) {} // defined in cyberway/libraries/chain/cyberway/cyberway_contract.cpp
+
+         [[eosio::on_notify(CYBER_STAKE "::withdraw")]] void on_stake_withdraw(name account, asset quantity);
+         [[eosio::on_notify(CYBER_STAKE "::provide")]] void on_stake_provide(name provider_name, name consumer_name, asset quantity);
 
    };
 

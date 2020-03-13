@@ -166,6 +166,13 @@ public:
             ("token_code", token_code)
         );
     }
+    
+    action_result suspendcand(account_name account, symbol_code token_code) {
+        return push(N(suspendcand), account, args()
+            ("account", account)
+            ("token_code", token_code)
+        );
+    }
 
     action_result reward(account_name issuer, account_name account, asset quantity) {
         return push(N(reward), issuer, args()
@@ -202,6 +209,15 @@ public:
             ("recipient_name", recipient_name)
             ("token_code", token_code)
         );
+    }
+    
+    action_result setautorc(account_name account, symbol_code token_code, bool break_fee_enabled, bool break_min_stake_enabled) {
+        return push(N(setautorc), account, args()("account", account)("token_code", token_code)
+            ("break_fee_enabled", break_fee_enabled)("break_min_stake_enabled", break_min_stake_enabled));
+    }
+    
+    action_result setautorcmode(account_name issuer, symbol_code token_code, bool enabled) {
+        return push(N(setautorcmode), issuer, args()("enabled", enabled)("token_code", token_code));
     }
 
     action_result register_candidate(account_name account, symbol_code token_code, bool need_to_open = true) {
@@ -321,6 +337,10 @@ public:
             ("total_votes", total_votes)
             ("last_reward", last_reward)
             ("enabled", enabled);
+    }
+
+    action_result return_losses(account_name caller) {
+        return push(N(returnlosses), caller, args());
     }
 };
 

@@ -2,7 +2,6 @@
 #include <common/config.hpp>
 #include <cyber.token/cyber.token.hpp>
 #include <eosio/eosio.hpp>
-#include <eosio/dispatcher.hpp>
 
 #include "domain_validate.cpp"
 
@@ -80,7 +79,7 @@ void domain::biddomain(name bidder, const domain_name& name, asset bid) {
     if (current == idx.end()) {
         bids.emplace(bidder, [&](auto& b) {
             b.id = bids.available_primary_key();
-            b.domain = name;
+            b.name = name;
             set_bid(b);
         });
     } else {
@@ -169,8 +168,3 @@ void domain::declarenames(const std::vector<name_info>& domains) {
 }
 
 } // eosiosystem
-
-
-EOSIO_DISPATCH(eosiosystem::domain,
-    (newdomain)(checkwin)(biddomain)(biddmrefund)(declarenames)
-)

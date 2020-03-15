@@ -44,12 +44,14 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
                 u.omission_resets = 0;
                 u.omission_count = 0;
                 u.is_oblidged = false;
+                u.last_time = eosio::current_time_point();
             });
         } else if (block_reward > 0) {
             producers_table.emplace(_self, [&](auto& u) {
                 u.account = producer;
                 u.amount = block_reward;
                 u.is_oblidged = false;
+                u.last_time = eosio::current_time_point();
             });
         }
     }
@@ -67,6 +69,7 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
     if (schedule_version.has_value()) {
         if (s.schedule_version.has_value() && s.schedule_version.value() != schedule_version.value()) {
             promote_producers(producers_table);
+            remove_old_producers(producers_table);
         }
         s.schedule_version.emplace(schedule_version.value());
     }
@@ -177,17 +180,11 @@ void govern::reward_producers(producers& producers_table, structures::state_info
     }
 
     auto balances_idx = producers_table.get_index<"bybalance"_n>();
-    for (auto itr = balances_idx.begin(); itr != balances_idx.end() && itr->amount;) {
+    for (auto itr = balances_idx.begin(); itr != balances_idx.end() && itr->amount; ++itr) {
         rewards.emplace_back(itr->account, itr->amount + get_old_reward(itr->account));
-        if (!cyber::stake::candidate_exists(itr->account, token_code)) {
-            burn_reward(itr->account, itr->unconfirmed_amount);
-            itr = balances_idx.erase(itr);
-        } else {
-            balances_idx.modify(itr, eosio::same_payer, [&](auto& u){
-                u.amount = 0;
-            });
-            ++itr;
-        }
+        balances_idx.modify(itr, eosio::same_payer, [&](auto& u){
+            u.amount = 0;
+        });
     }
 
     for (const auto& r: old_rewards) {
@@ -327,12 +324,30 @@ void govern::promote_producers(producers& producers_table) {
             producers_table.emplace(_self, [&](auto& p) {
                 p.account = acc;
                 p.is_oblidged = true;
+                p.last_time = eosio::current_time_point();
             });
         } else if (!itr->is_oblidged) {
             producers_table.modify(itr, eosio::same_payer, [&](auto& p) {
                 p.is_oblidged = true;
             });
         }
+    }
+}
+
+void govern::remove_old_producers(producers& producers_table) {
+    static constexpr auto token_code = system_token.code();
+    auto last_time_idx = producers_table.get_index<"bytime"_n>();
+    auto itr = last_time_idx.begin();
+    if (last_time_idx.end() == itr) {
+        return;
+    }
+    if (!cyber::stake::candidate_exists(itr->account, token_code)) {
+        burn_reward(itr->account, itr->unconfirmed_amount + itr->amount);
+        last_time_idx.erase(itr);
+    } else {
+        last_time_idx.modify(itr, eosio::same_payer, [&](auto& p){
+           p.last_time = eosio::current_time_point();
+        });
     }
 }
 

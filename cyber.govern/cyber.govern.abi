@@ -1,0 +1,144 @@
+{
+    "____comment": "This file was generated with eosio-abigen. DO NOT EDIT ", 
+    "version": "cyberway::abi/1.1", 
+    "types": [], 
+    "structs": [{
+            "name": "balance_struct", "base": "", 
+            "fields": [
+                {"name": "account", "type": "name"}, 
+                {"name": "amount", "type": "int64"}
+            ]
+        }, {
+            "name": "omission_struct", "base": "", 
+            "fields": [
+                {"name": "account", "type": "name"}, 
+                {"name": "count", "type": "uint16"}, 
+                {"name": "resets", "type": "uint16"}
+            ]
+        }, {
+            "name": "onblock", "base": "", 
+            "fields": [
+                {"name": "producer", "type": "name"}
+            ]
+        }, {
+            "name": "pending_producers_info", "base": "", 
+            "fields": [
+                {"name": "id", "type": "uint64"}, 
+                {"name": "accounts", "type": "name[]"}
+            ]
+        }, {
+            "name": "producer_struct", "base": "", 
+            "fields": [
+                {"name": "account", "type": "name"}
+            ]
+        }, {
+            "name": "schedule_resize_info", "base": "", 
+            "fields": [
+                {"name": "id", "type": "uint64"}, 
+                {"name": "last_step", "type": "time_point_sec"}, 
+                {"name": "shift", "type": "int8"}
+            ]
+        }, {
+            "name": "setactprods", "base": "", 
+            "fields": [
+                {"name": "pending_active_producers", "type": "name[]"}
+            ]
+        }, {
+            "name": "setshift", "base": "", 
+            "fields": [
+                {"name": "shift", "type": "int8"}
+            ]
+        }, {
+            "name": "state_info", "base": "", 
+            "fields": [
+                {"name": "id", "type": "uint64"}, 
+                {"name": "last_schedule_increase", "type": "time_point_sec"}, 
+                {"name": "block_num", "type": "uint32"}, 
+                {"name": "target_emission_per_block", "type": "int64"}, 
+                {"name": "funds", "type": "int64"}, 
+                {"name": "last_propose_block_num", "type": "uint32"}, 
+                {"name": "required_producers_num", "type": "uint16"}, 
+                {"name": "last_producers_num", "type": "uint16"}
+            ]
+        }
+    ], 
+    "actions": [
+        {"name": "onblock", "type": "onblock"}, 
+        {"name": "setactprods", "type": "setactprods"}, 
+        {"name": "setshift", "type": "setshift"}
+    ], 
+    "events": [
+        {"name": "burnreward", "type": "balance_struct"}
+    ], 
+    "tables": [{
+            "name": "balance", "type": "balance_struct", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "account", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "governstate", "type": "state_info", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "id", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "obligedprod", "type": "producer_struct", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "account", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "omission", "type": "omission_struct", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "account", "order": "asc"}
+                    ]
+                }, {
+                    "name": "bycount", "unique": false, 
+                    "orders": [
+                        {"field": "count", "order": "desc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "pendingprods", "type": "pending_producers_info", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "id", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "schedresize", "type": "schedule_resize_info", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "id", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "uncbalance", "type": "balance_struct", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "account", "order": "asc"}
+                    ]
+                }
+            ]
+        }
+    ], 
+    "variants": []
+}

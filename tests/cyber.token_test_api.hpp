@@ -50,6 +50,9 @@ struct cyber_token_api: base_contract_api {
         );
     }
 
+    action_result close(account_name owner) {
+        return close(owner, _symbol);
+    }
     action_result close(account_name owner, symbol symbol) {
         return push(N(close), owner, args()
             ("owner", owner)
@@ -211,6 +214,7 @@ struct cyber_token_api: base_contract_api {
         if (v.is_object()) {
             auto o = mvo(v);
             o["balance"] = o["balance"].as<asset>().to_string();
+            o["payments"] = o["payments"].as<asset>().to_string();
             v = o;
         }
         return v;
@@ -221,12 +225,8 @@ struct cyber_token_api: base_contract_api {
     }
 
     variant get_safe(name acc) {
-        auto v = get_struct(acc, N(safe), _symbol_code.value, "");
-        if (v.is_object() && v["unlocked"].is_object()) {
-            auto o = mvo(v);
-            return o("unlocked", o["unlocked"].as<asset>());
-        }
-        return v;
+        auto v = get_struct(acc, N(accounts), _symbol_code.value, "");
+        return v.is_object() && v.get_object().contains("safe") ? v["safe"] : variant{};
     }
 
     variant get_safe_mod(name acc, name mod_id) {
@@ -239,7 +239,7 @@ struct cyber_token_api: base_contract_api {
 
     // generated objects
     variant make_safe(double unlocked, uint32_t delay, name trusted = {}) {
-        return mvo()("unlocked", make_asset(unlocked).to_string())("delay", delay)("trusted", trusted);
+        return mvo()("unlocked", make_asset(unlocked).get_amount())("delay", delay)("trusted", trusted);
     }
     variant make_safe_mod(name id, double unlock, optional<uint32_t> delay = {}, optional<name> trusted = {}) {
         auto mod = mvo()("id", id)("sym_code", _symbol_code)("unlock", to_shares(unlock));

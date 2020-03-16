@@ -7,6 +7,7 @@
 #include <eosio/asset.hpp>
 #include <eosio/eosio.hpp>
 #include <eosio/singleton.hpp>
+#include <eosio/binary_extension.hpp>
 
 #include <string>
 #include <vector>
@@ -240,9 +241,17 @@ namespace eosio {
          }
 
       private:
+         struct safe_t {
+            int64_t  unlocked;   //!< Amount of unlocked tokens in the safe, share_type
+            uint32_t delay;      //!< Delay in seconds of unlock/modify period
+            name     trusted;    //!< Trusted account, empty name means no trusted account set
+         };
+
          struct account {
             asset    balance;
             asset    payments;
+
+            eosio::binary_extension<safe_t, write_strategy::no_value> safe;
 
             uint64_t primary_key()const { return balance.symbol.code().raw(); }
          };
@@ -259,19 +268,6 @@ namespace eosio {
             name     account;
             asset    balance;
             asset    payments;
-         };
-
-         /**
-            \brief DB record containing information about safe for tokens of a certain symbol on the account balance
-            \ingroup token_tables
-         */
-         // DOCS_TABLE: safe
-         struct safe {
-            asset unlocked; //!< Number of unlocked tokens in the safe
-            name trusted; //!< Trusted account, disabled if empty
-            uint32_t delay; //!< Delay in seconds of unlock/modify period
-
-            uint64_t primary_key() const { return unlocked.symbol.code().raw(); }
          };
 
          /**
@@ -310,8 +306,6 @@ namespace eosio {
          using stats [[using eosio: order("supply._sym"), scope_type("symbol_code")]] =
             eosio::multi_index<"stat"_n, currency_stats>;
 
-         using safe_tbl [[eosio::order("unlocked._sym","asc")]] =
-            eosio::multi_index<"safe"_n, safe>;
          using safemod_sym_idx [[using eosio: order("sym_code","asc"), order("id","asc")]] =
             eosio::indexed_by<"bysymbolcode"_n, eosio::const_mem_fun<safemod, safemod::key_t, &safemod::by_symbol_code>>;
          using safemod_tbl [[eosio::order("id","asc")]] =

@@ -165,12 +165,12 @@ void token::sub_balance( name owner, asset value ) {
       });
 
    check(!is_locked(_self, owner), "balance locked in safe");
-   safe_tbl safes(_self, owner.value);
-   const auto& safe = safes.find(value.symbol.code().raw());
-   if (safe != safes.end()) {
-      safes.modify(safe, owner, [&](auto& s) {
-         s.unlocked -= value;
-         check(s.unlocked.amount >= 0, "overdrawn safe unlocked balance");
+   if (from.safe.has_value()) {
+      from_acnts.modify(from, owner, [&](auto& a) {
+         auto safe = a.safe.value();
+         safe.unlocked -= value.amount;
+         check(safe.unlocked >= 0, "overdrawn safe unlocked balance");
+         a.safe.emplace(safe);
       });
    }
 }
@@ -240,6 +240,7 @@ void token::close( name owner, const symbol& symbol )
    eosio::check( it != acnts.end(), "Balance row already deleted or never existed. Action won't have any effect." );
    eosio::check( it->balance.amount == 0, "Cannot close because the balance is not zero." );
    eosio::check( it->payments.amount == 0, "Cannot close because account has payments." );
+   eosio::check( !it->safe.has_value(), "Cannot close because safe enabled." );
    acnts.erase( it );
 }
 
@@ -316,49 +317,51 @@ void token::enablesafe(name owner, asset unlock, uint32_t delay, name trusted) {
       validate_symbol(_self, unlock);
    }
 
-   safe_tbl safes(_self, owner.value);
+   accounts tbl(_self, owner.value);
    const auto scode = unlock.symbol.code();
-   auto safe = safes.find(scode.raw());
-   check(safe == safes.end(), "Safe already enabled");
+   const auto& acc = tbl.get(scode.raw(), "no token account object found");
+   check(!acc.safe.has_value(), "safe already enabled");
 
    // Do not allow to have delayed changes when enable the safe, they came from the previously enabled safe
    // and should be cancelled to make clean safe setup.
    safemod_tbl mods(_self, owner.value);
    auto idx = mods.get_index<"bysymbolcode"_n>();
    auto itr = idx.lower_bound(scode);
-   check(itr == idx.end() || itr->sym_code != scode, "Can't enable safe with existing delayed mods");
+   check(itr == idx.end() || itr->sym_code != scode, "can't enable safe with existing delayed mods");
 
-   safes.emplace(owner, [&](auto& s) {
-      s.unlocked = unlock;
-      s.delay = delay;
-      s.trusted = trusted;
+   tbl.modify(acc, owner, [&](auto& a) {
+      a.safe.emplace(safe_t{unlock.amount, delay, trusted});
    });
 }
 
 template<typename Tbl, typename S>
-void instant_safe_change(Tbl& safes, S& safe,
+void instant_safe_change(Tbl& tbl, S& acc,
    name owner, int64_t unlock, optional<uint32_t> delay, optional<name> trusted, bool ensure_change
 ) {
    if (delay && *delay == 0) {
       check(!unlock && !trusted, "SYS: incorrect disabling safe mod");
-      safes.erase(safe);
+      tbl.modify(acc, owner, [](auto& a){
+         a.safe.reset();
+      });
    } else {
       bool changed = !ensure_change;
-      safes.modify(safe, owner, [&](auto& s) {
-         if (unlock) {
-               s.unlocked.amount += unlock;
-               check(s.unlocked.is_amount_within_range(), "unlocked overflow");
-               changed = true;
-         }
-         if (delay && *delay != s.delay) {
-               s.delay = *delay;
-               changed = true;
-         }
-         if (trusted && *trusted != s.trusted) {
-               s.trusted = *trusted;
-               changed = true;
-         }
-         check(changed, "Change has no effect and can be cancelled");
+      auto safe = acc.safe.value();
+      if (unlock) {
+            safe.unlocked += unlock;
+            check(safe.unlocked >= 0 && safe.unlocked <= asset::max_amount, "unlocked overflow");
+            changed = true;
+      }
+      if (delay && *delay != safe.delay) {
+            safe.delay = *delay;
+            changed = true;
+      }
+      if (trusted && *trusted != safe.trusted) {
+            safe.trusted = *trusted;
+            changed = true;
+      }
+      check(changed, "change has no effect and can be cancelled");
+      tbl.modify(acc, owner, [&](auto& a) {
+         a.safe.emplace(safe);
       });
    }
 }
@@ -384,20 +387,22 @@ void token::delay_safe_change(
    }
 
    const auto scode = unlock.symbol.code();
-   safe_tbl safes(_self, owner.value);
-   const auto& safe = safes.get(scode.raw(), "Safe disabled");
+   accounts tbl(_self, owner.value);
+   const auto& acc = tbl.get(scode.raw(), "no token account object found");
+   check(acc.safe.has_value(), "safe disabled");
+   auto safe = acc.safe.value();
 
    const bool have_id = mod_id != name();
    const auto trusted_acc = safe.trusted;
    if (trusted_acc != name() && has_auth(trusted_acc)) {
       check(!have_id, "mod_id must be empty for trusted action");
-      check(!delay || *delay != safe.delay, "Can't set same delay");
-      check(!trusted || *trusted != trusted_acc, "Can't set same trusted");
-      instant_safe_change(safes, safe, owner, unlock.amount, delay, trusted, false);
+      check(!delay || *delay != safe.delay, "can't set same delay");
+      check(!trusted || *trusted != trusted_acc, "can't set same trusted");
+      instant_safe_change(tbl, acc, owner, unlock.amount, delay, trusted, false);
    } else {
       check(have_id, "mod_id must not be empty");
       safemod_tbl mods(_self, owner.value);
-      check(mods.find(mod_id.value) == mods.end(), "Safe mod with the same id is already exists");
+      check(mods.find(mod_id.value) == mods.end(), "safe mod with the same id is already exists");
       mods.emplace(owner, [&](auto& d) {
          d.id = mod_id;
          d.sym_code = scode;
@@ -426,14 +431,18 @@ void token::locksafe(name owner, asset lock) {
    validate_symbol(_self, lock); // checked within "<= unlocked", but have confusing message, so check here
 
    const auto scode = lock.symbol.code();
-   safe_tbl safes(_self, owner.value);
-   const auto& safe = safes.get(scode.raw(), "Safe disabled");
-   check(safe.unlocked.amount > 0, "nothing to lock");
-   check(lock <= safe.unlocked, "lock must be <= unlocked");
+   accounts tbl(_self, owner.value);
+   const auto& acc = tbl.get(scode.raw(), "no token account object found");
+   check(acc.safe.has_value(), "safe disabled");
+   auto safe = acc.safe.value();
+   check(safe.unlocked > 0, "nothing to lock");
+   check(safe.unlocked >= lock.amount, "lock must be <= unlocked");
 
    bool lock_all = lock.amount == 0;
-   safes.modify(safe, owner, [&](auto& s) {
-      s.unlocked -= lock_all ? s.unlocked : lock;
+   tbl.modify(acc, owner, [&](auto& a) {
+      auto safe = a.safe.value();
+      safe.unlocked -= lock_all ? safe.unlocked : lock.amount;
+      a.safe.emplace(safe);
    });
 }
 
@@ -448,24 +457,26 @@ void token::modifysafe(
 void token::applysafemod(name owner, name mod_id) {
    require_auth(owner);
    safemod_tbl mods(_self, owner.value);
-   const auto& mod = mods.get(mod_id.value, "Safe mod not found");
+   const auto& mod = mods.get(mod_id.value, "safe mod not found");
 
-   safe_tbl safes(_self, owner.value);
-   const auto& safe = safes.get(mod.sym_code.raw(), "Safe disabled");
+   accounts tbl(_self, owner.value);
+   const auto& acc = tbl.get(mod.sym_code.raw(), "no token account object found");
+   check(acc.safe.has_value(), "safe disabled");
+   const auto& safe = acc.safe.value();
 
    bool trusted_apply = safe.trusted != name() && has_auth(safe.trusted);
    if (!trusted_apply) {
-      check(mod.date <= eosio::current_time_point(), "Safe change is time locked");
-      check(!is_locked(_self, owner), "Safe locked globally");
+      check(mod.date <= eosio::current_time_point(), "safe change is time locked");
+      check(!is_locked(_self, owner), "safe locked globally");
    }
-   instant_safe_change(safes, safe, owner, mod.unlock, mod.delay, mod.trusted, true);
+   instant_safe_change(tbl, acc, owner, mod.unlock, mod.delay, mod.trusted, true);
    mods.erase(mod);
 }
 
 void token::cancelsafemod(name owner, name mod_id) {
    require_auth(owner);
    safemod_tbl mods(_self, owner.value);
-   const auto& mod = mods.get(mod_id.value, "Safe mod not found");
+   const auto& mod = mods.get(mod_id.value, "safe mod not found");
    mods.erase(mod);
 }
 

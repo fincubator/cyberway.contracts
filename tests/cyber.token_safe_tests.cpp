@@ -37,14 +37,23 @@ protected:
     const double _total = 400;
 
 public:
-    void init(name issuer = {}) {
-        if (issuer.empty()) issuer = _issuer;
+    void init_without_open() {
+        init(name{}, false);
+    }
+    void init(name issuer = {}, bool open = true) {
+        if (!issuer) issuer = _issuer;
         const auto init_tokens = [&](cyber_token_api& token) {
             BOOST_CHECK_EQUAL(success(), token.create(issuer, token.make_asset(_total * 5)));
             BOOST_CHECK_EQUAL(success(), token.issue(issuer, issuer, token.make_asset(_total)));
         };
         init_tokens(token);
         init_tokens(token2);
+        if (open) {
+            BOOST_CHECK_EQUAL(success(), token.open(_alice));
+            BOOST_CHECK_EQUAL(success(), token.open(_bob));
+            BOOST_CHECK_EQUAL(success(), token2.open(_alice));
+            BOOST_CHECK_EQUAL(success(), token2.open(_bob));
+        }
     }
 
     const account_name _issuer = N(issuer);
@@ -54,6 +63,7 @@ public:
     const account_name _nobody = N(nobody); // not existing account
 
     struct errors: contract_error_messages {
+        const string no_token_account = amsg("no token account object found");
         const string symbol_precision = amsg("symbol precision mismatch");
         const string unlock_lt0 = amsg("unlock amount must be >= 0");
         const string unlock_lte0 = amsg("unlock amount must be > 0");
@@ -63,31 +73,57 @@ public:
         const string delay_gt_max = amsg("delay must be <= " + std::to_string(cfg::safe_max_delay));
         const string trusted_eq_owner = amsg("trusted and owner must be different accounts");
         const string trusted_not_exists = amsg("trusted account does not exist");
-        const string already_enabled = amsg("Safe already enabled");
-        const string have_mods = amsg("Can't enable safe with existing delayed mods");
-        const string disabled = amsg("Safe disabled");
-        const string same_delay = amsg("Can't set same delay");
-        const string same_trusted = amsg("Can't set same trusted");
+        const string already_enabled = amsg("safe already enabled");
+        const string have_mods = amsg("can't enable safe with existing delayed mods");
+        const string disabled = amsg("safe disabled");
+        const string same_delay = amsg("can't set same delay");
+        const string same_trusted = amsg("can't set same trusted");
         const string empty_mod_id = amsg("mod_id must not be empty");
         const string have_mod_id = amsg("mod_id must be empty for trusted action");
-        const string same_mod_id = amsg("Safe mod with the same id is already exists");
+        const string same_mod_id = amsg("safe mod with the same id is already exists");
         const string lock_gt_unlocked = amsg("lock must be <= unlocked");
         const string nothing_set = amsg("delay and/or trusted must be set");
-        const string mod_not_exists = amsg("Safe mod not found");
-        const string still_locked = amsg("Safe change is time locked");
-        const string nothing_to_apply = amsg("Change has no effect and can be cancelled");
+        const string mod_not_exists = amsg("safe mod not found");
+        const string still_locked = amsg("safe change is time locked");
+        const string nothing_to_apply = amsg("change has no effect and can be cancelled");
         const string global_lock = amsg("balance locked in safe");
-        const string mod_global_lock = amsg("Safe locked globally");
+        const string mod_global_lock = amsg("safe locked globally");
         const string balance_lock = amsg("overdrawn safe unlocked balance");
         const string balance_over = amsg("overdrawn balance");
         const string unlocked_over = amsg("unlocked overflow");
         const string period_le0 = amsg("period must be > 0");
         const string period_gt_max = amsg("period must be <= " + std::to_string(cfg::safe_max_delay));
         const string period_le_cur = amsg("new unlock time must be greater than current");
+        const string close_with_safe = amsg("Cannot close because safe enabled.");
     } err;
 };
 
 BOOST_AUTO_TEST_SUITE(cyber_token_safe)
+
+BOOST_FIXTURE_TEST_CASE(no_balance, cyber_token_safe_tester) try {
+    BOOST_TEST_MESSAGE("Works only with opened balance");
+    init_without_open();
+    BOOST_CHECK(token.get_safe(_bob).is_null());
+
+    BOOST_TEST_MESSAGE("--- fail if account object doesn't exist");
+    const name mod_id = N(mod);
+    BOOST_CHECK_EQUAL(err.no_token_account, token.enable_safe(_bob, 0, _delay));
+    BOOST_CHECK_EQUAL(err.no_token_account, token.disable_safe(_bob, mod_id));
+    BOOST_CHECK_EQUAL(err.no_token_account, token.unlock_safe(_bob, mod_id, 1));
+    BOOST_CHECK_EQUAL(err.no_token_account, token.lock_safe(_bob, 1));
+    BOOST_CHECK_EQUAL(err.no_token_account, token.modify_safe(_bob, mod_id, cfg::safe_max_delay/2));
+    // Can't test apply_safe_mod with unexistig balance
+    BOOST_TEST_MESSAGE("--- success after open balance");
+    BOOST_CHECK_EQUAL(success(), token.open(_bob));
+    BOOST_CHECK_EQUAL(success(), token.enable_safe(_bob, 0, _delay, _alice));
+
+    BOOST_TEST_MESSAGE("--- fail to close balance with enabled safe");
+    BOOST_CHECK_EQUAL(err.close_with_safe, token.close(_bob));
+    BOOST_TEST_MESSAGE("--- success after disable safe");
+    BOOST_CHECK_EQUAL(success(), token.disable_safe2(_bob, _alice));
+    BOOST_CHECK_EQUAL(success(), token.close(_bob));
+
+} FC_LOG_AND_RETHROW()
 
 BOOST_FIXTURE_TEST_CASE(enable, cyber_token_safe_tester) try {
     BOOST_TEST_MESSAGE("Enable the safe");
@@ -548,10 +584,6 @@ BOOST_FIXTURE_TEST_CASE(safe, cyber_token_safe_tester) try {
     init(_alice); // only issuer can retire so issue by alice
     const auto mod_id = N(mod);
     const double money = 100;
-    BOOST_CHECK_EQUAL(success(), token.open(_bob));
-    BOOST_CHECK_EQUAL(success(), token.open(_carol));
-    BOOST_CHECK_EQUAL(success(), token2.open(_bob));
-    BOOST_CHECK_EQUAL(success(), token2.open(_carol));
     BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _bob, money));
     BOOST_CHECK_EQUAL(success(), token2.transfer(_alice, _bob, money));
     BOOST_CHECK_EQUAL(success(), token.transfer(_alice, _carol, _total - 2*money));

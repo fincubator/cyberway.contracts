@@ -1,0 +1,137 @@
+{
+    "____comment": "This file was generated with eosio-abigen. DO NOT EDIT ", 
+    "version": "cyberway::abi/1.1", 
+    "types": [], 
+    "structs": [{
+            "name": "account", "base": "", 
+            "fields": [
+                {"name": "balance", "type": "asset"}, 
+                {"name": "payments", "type": "asset"}
+            ]
+        }, {
+            "name": "balance_event", "base": "", 
+            "fields": [
+                {"name": "account", "type": "name"}, 
+                {"name": "balance", "type": "asset"}, 
+                {"name": "payments", "type": "asset"}
+            ]
+        }, {
+            "name": "bulkpayment", "base": "", 
+            "fields": [
+                {"name": "from", "type": "name"}, 
+                {"name": "recipients", "type": "recipient[]"}
+            ]
+        }, {
+            "name": "bulktransfer", "base": "", 
+            "fields": [
+                {"name": "from", "type": "name"}, 
+                {"name": "recipients", "type": "recipient[]"}
+            ]
+        }, {
+            "name": "claim", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "quantity", "type": "asset"}
+            ]
+        }, {
+            "name": "close", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "symbol", "type": "symbol"}
+            ]
+        }, {
+            "name": "create", "base": "", 
+            "fields": [
+                {"name": "issuer", "type": "name"}, 
+                {"name": "maximum_supply", "type": "asset"}
+            ]
+        }, {
+            "name": "currency_stats", "base": "", 
+            "fields": [
+                {"name": "supply", "type": "asset"}, 
+                {"name": "max_supply", "type": "asset"}, 
+                {"name": "issuer", "type": "name"}
+            ]
+        }, {
+            "name": "issue", "base": "", 
+            "fields": [
+                {"name": "to", "type": "name"}, 
+                {"name": "quantity", "type": "asset"}, 
+                {"name": "memo", "type": "string"}
+            ]
+        }, {
+            "name": "open", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "symbol", "type": "symbol"}, 
+                {"name": "ram_payer", "type": "name"}
+            ]
+        }, {
+            "name": "payment", "base": "", 
+            "fields": [
+                {"name": "from", "type": "name"}, 
+                {"name": "to", "type": "name"}, 
+                {"name": "quantity", "type": "asset"}, 
+                {"name": "memo", "type": "string"}
+            ]
+        }, {
+            "name": "recipient", "base": "", 
+            "fields": [
+                {"name": "to", "type": "name"}, 
+                {"name": "quantity", "type": "asset"}, 
+                {"name": "memo", "type": "string"}
+            ]
+        }, {
+            "name": "retire", "base": "", 
+            "fields": [
+                {"name": "quantity", "type": "asset"}, 
+                {"name": "memo", "type": "string"}
+            ]
+        }, {
+            "name": "transfer", "base": "", 
+            "fields": [
+                {"name": "from", "type": "name"}, 
+                {"name": "to", "type": "name"}, 
+                {"name": "quantity", "type": "asset"}, 
+                {"name": "memo", "type": "string"}
+            ]
+        }
+    ], 
+    "actions": [
+        {"name": "bulkpayment", "type": "bulkpayment"}, 
+        {"name": "bulktransfer", "type": "bulktransfer"}, 
+        {"name": "claim", "type": "claim"}, 
+        {"name": "close", "type": "close"}, 
+        {"name": "create", "type": "create"}, 
+        {"name": "issue", "type": "issue"}, 
+        {"name": "open", "type": "open"}, 
+        {"name": "payment", "type": "payment"}, 
+        {"name": "retire", "type": "retire"}, 
+        {"name": "transfer", "type": "transfer"}
+    ], 
+    "events": [
+        {"name": "balance", "type": "balance_event"}, 
+        {"name": "currency", "type": "currency_stats"}
+    ], 
+    "tables": [{
+            "name": "accounts", "type": "account", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "balance._sym", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "stat", "type": "currency_stats", "scope_type": "symbol_code", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "supply._sym", "order": "asc"}
+                    ]
+                }
+            ]
+        }
+    ], 
+    "variants": []
+}

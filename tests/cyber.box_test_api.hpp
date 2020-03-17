@@ -35,9 +35,9 @@ public:
     }
     
     variant get_box(name contract, name treasurer, name title) {
-        auto all = _tester->get_all_chaindb_rows(_code, _code.value, N(box), false);
+        auto all = _tester->get_all_chaindb_rows(_code, treasurer.value, N(box), false);
         for(auto& v : all) {
-            if (v["contract"].as<name>() == contract && v["treasurer"].as<name>() == treasurer && v["title"].as<name>() == title) {
+            if (v["contract"].as<name>() == contract && v["title"].as<name>() == title) {
                 return v;
             }
         }

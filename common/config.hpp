@@ -56,6 +56,9 @@ static constexpr int64_t blocks_per_year = int64_t(365)*24*60*60*1000/block_inte
 
 static const std::string retire_memo = "retire";
 
+static constexpr size_t max_memo_size = 384;
+static constexpr char memo_error[] = "memo has more than 384 bytes";
+
 } // config
 
 constexpr int64_t time_to_blocks(int64_t time) {

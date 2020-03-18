@@ -52,6 +52,7 @@ void box::burn(name contract, name treasurer, name title) {
 
 void box::transfer(name contract, name treasurer, name title, name from, name to, std::string memo) {
     eosio::check(is_account(to), "to account does not exist");
+    eosio::check(memo.size() <= config::max_memo_size, config::memo_error);
     boxes boxes_table(_self, treasurer.value);
     auto boxes_idx = boxes_table.get_index<"bykey"_n>();
     auto box_itr = boxes_idx.find({contract, title});

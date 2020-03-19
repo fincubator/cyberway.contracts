@@ -11,7 +11,7 @@ using namespace cyber::config;
 
 namespace cyber {
 
-void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_version) {
+void govern::onblock(name producer, const eosio::binary_extension<uint32_t>& schedule_version) {
     require_auth(_self);
     
     auto state = state_singleton(_self, _self.value);
@@ -74,7 +74,7 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
         s.schedule_version.emplace(schedule_version.value());
     }
 
-    state.set(s, _self);
+    state.set(std::move(s), _self);
 }
 
 void govern::reward_workers(structures::state_info& s) {

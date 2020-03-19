@@ -25,34 +25,9 @@ struct structures {
         uint16_t last_producers_num = 1;
 
         // using of binary_extension is a temporary decision only for upgrade phase
-        eosio::binary_extension<time_point_sec> last_resize_step;
-        eosio::binary_extension<int8_t> resize_shift;
-        eosio::binary_extension<uint32_t> schedule_version;
-
-        // this operator is required to set binary extension fields
-        void operator = (const state_info& s) {
-            last_schedule_increase = s.last_schedule_increase;
-            block_num = s.block_num;
-            target_emission_per_block = s.target_emission_per_block;
-            funds = s.funds;
-            last_propose_block_num = s.last_propose_block_num;
-            required_producers_num = s.required_producers_num;
-            last_producers_num = s.last_producers_num;
-
-            set_extension_field(last_resize_step, s.last_resize_step);
-            set_extension_field(resize_shift, s.resize_shift);
-            set_extension_field(schedule_version, s.schedule_version);
-        }
-
-        template<typename T>
-        void set_extension_field(eosio::binary_extension<T>& dst, const eosio::binary_extension<T>& src) const {
-            // temporary decision only for upgrade phase
-            if (src.has_value()) {
-                dst.emplace(src.value());
-            } else {
-                dst.reset();
-            }
-        }
+        eosio::binary_extension<time_point_sec, eosio::write_strategy::no_value> last_resize_step;
+        eosio::binary_extension<int8_t, eosio::write_strategy::no_value> resize_shift;
+        eosio::binary_extension<uint32_t, eosio::write_strategy::no_value> schedule_version;
     };
 
     struct [[using eosio: event("burnreward"), contract("cyber.govern")]] balance_struct {
@@ -95,7 +70,7 @@ struct structures {
     
 public:
     using contract::contract;
-    [[eosio::action]] void onblock(name producer, eosio::binary_extension<uint32_t> schedule_version);
+    [[eosio::action]] void onblock(name producer, const eosio::binary_extension<uint32_t>& schedule_version);
     [[eosio::action]] void setshift(int8_t shift);
 };
 

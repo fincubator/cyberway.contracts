@@ -41,9 +41,9 @@
                 {"name": "last_propose_block_num", "type": "uint32"}, 
                 {"name": "required_producers_num", "type": "uint16"}, 
                 {"name": "last_producers_num", "type": "uint16"}, 
-                {"name": "last_resize_step", "type": "time_point_sec$"}, 
+                {"name": "schedule_version", "type": "uint32$"}, 
                 {"name": "resize_shift", "type": "int8$"}, 
-                {"name": "schedule_version", "type": "uint32$"}
+                {"name": "last_resize_step", "type": "time_point_sec$"}
             ]
         }
     ], 

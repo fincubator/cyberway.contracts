@@ -25,9 +25,9 @@ struct structures {
         uint16_t last_producers_num = 1;
 
         // using of binary_extension is a temporary decision only for upgrade phase
-        eosio::binary_extension<time_point_sec, eosio::write_strategy::no_value> last_resize_step;
-        eosio::binary_extension<int8_t, eosio::write_strategy::no_value> resize_shift;
         eosio::binary_extension<uint32_t, eosio::write_strategy::no_value> schedule_version;
+        eosio::binary_extension<int8_t, eosio::write_strategy::no_value> resize_shift;
+        eosio::binary_extension<time_point_sec, eosio::write_strategy::no_value> last_resize_step;
     };
 
     struct [[using eosio: event("burnreward"), contract("cyber.govern")]] balance_struct {
@@ -70,7 +70,7 @@ struct structures {
     
 public:
     using contract::contract;
-    [[eosio::action]] void onblock(name producer, const eosio::binary_extension<uint32_t>& schedule_version);
+    [[eosio::action]] void onblock(name producer, eosio::binary_extension<uint32_t> schedule_version);
     [[eosio::action]] void setshift(int8_t shift);
 };
 

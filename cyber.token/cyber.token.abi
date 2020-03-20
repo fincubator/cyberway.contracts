@@ -6,7 +6,14 @@
             "name": "account", "base": "", 
             "fields": [
                 {"name": "balance", "type": "asset"}, 
-                {"name": "payments", "type": "asset"}
+                {"name": "payments", "type": "asset"}, 
+                {"name": "safe", "type": "safe_t$"}
+            ]
+        }, {
+            "name": "applysafemod", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "mod_id", "type": "name"}
             ]
         }, {
             "name": "balance_event", "base": "", 
@@ -26,6 +33,12 @@
             "fields": [
                 {"name": "from", "type": "name"}, 
                 {"name": "recipients", "type": "recipient[]"}
+            ]
+        }, {
+            "name": "cancelsafemod", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "mod_id", "type": "name"}
             ]
         }, {
             "name": "claim", "base": "", 
@@ -53,11 +66,53 @@
                 {"name": "issuer", "type": "name"}
             ]
         }, {
+            "name": "disablesafe", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "sym_code", "type": "symbol_code"}, 
+                {"name": "mod_id", "type": "name"}
+            ]
+        }, {
+            "name": "enablesafe", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "unlock", "type": "asset"}, 
+                {"name": "delay", "type": "uint32"}, 
+                {"name": "trusted", "type": "name"}
+            ]
+        }, {
+            "name": "globallock", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "period", "type": "uint32"}
+            ]
+        }, {
             "name": "issue", "base": "", 
             "fields": [
                 {"name": "to", "type": "name"}, 
                 {"name": "quantity", "type": "asset"}, 
                 {"name": "memo", "type": "string"}
+            ]
+        }, {
+            "name": "lock", "base": "", 
+            "fields": [
+                {"name": "id", "type": "uint64"}, 
+                {"name": "unlocks", "type": "time_point_sec"}
+            ]
+        }, {
+            "name": "locksafe", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "lock", "type": "asset"}
+            ]
+        }, {
+            "name": "modifysafe", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "sym_code", "type": "symbol_code"}, 
+                {"name": "mod_id", "type": "name"}, 
+                {"name": "delay", "type": "uint32?"}, 
+                {"name": "trusted", "type": "name?"}
             ]
         }, {
             "name": "open", "base": "", 
@@ -88,6 +143,23 @@
                 {"name": "memo", "type": "string"}
             ]
         }, {
+            "name": "safe_t", "base": "", 
+            "fields": [
+                {"name": "unlocked", "type": "int64"}, 
+                {"name": "delay", "type": "uint32"}, 
+                {"name": "trusted", "type": "name"}
+            ]
+        }, {
+            "name": "safemod", "base": "", 
+            "fields": [
+                {"name": "id", "type": "name"}, 
+                {"name": "sym_code", "type": "symbol_code"}, 
+                {"name": "date", "type": "time_point_sec"}, 
+                {"name": "unlock", "type": "int64"}, 
+                {"name": "delay", "type": "uint32?"}, 
+                {"name": "trusted", "type": "name?"}
+            ]
+        }, {
             "name": "transfer", "base": "", 
             "fields": [
                 {"name": "from", "type": "name"}, 
@@ -95,19 +167,34 @@
                 {"name": "quantity", "type": "asset"}, 
                 {"name": "memo", "type": "string"}
             ]
+        }, {
+            "name": "unlocksafe", "base": "", 
+            "fields": [
+                {"name": "owner", "type": "name"}, 
+                {"name": "unlock", "type": "asset"}, 
+                {"name": "mod_id", "type": "name"}
+            ]
         }
     ], 
     "actions": [
+        {"name": "applysafemod", "type": "applysafemod"}, 
         {"name": "bulkpayment", "type": "bulkpayment"}, 
         {"name": "bulktransfer", "type": "bulktransfer"}, 
+        {"name": "cancelsafemod", "type": "cancelsafemod"}, 
         {"name": "claim", "type": "claim"}, 
         {"name": "close", "type": "close"}, 
         {"name": "create", "type": "create"}, 
+        {"name": "disablesafe", "type": "disablesafe"}, 
+        {"name": "enablesafe", "type": "enablesafe"}, 
+        {"name": "globallock", "type": "globallock"}, 
         {"name": "issue", "type": "issue"}, 
+        {"name": "locksafe", "type": "locksafe"}, 
+        {"name": "modifysafe", "type": "modifysafe"}, 
         {"name": "open", "type": "open"}, 
         {"name": "payment", "type": "payment"}, 
         {"name": "retire", "type": "retire"}, 
-        {"name": "transfer", "type": "transfer"}
+        {"name": "transfer", "type": "transfer"}, 
+        {"name": "unlocksafe", "type": "unlocksafe"}
     ], 
     "events": [
         {"name": "balance", "type": "balance_event"}, 
@@ -119,6 +206,30 @@
                     "name": "primary", "unique": true, 
                     "orders": [
                         {"field": "balance._sym", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "lock", "type": "lock", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "id", "order": "asc"}
+                    ]
+                }
+            ]
+        }, {
+            "name": "safemod", "type": "safemod", 
+            "indexes": [{
+                    "name": "primary", "unique": true, 
+                    "orders": [
+                        {"field": "id", "order": "asc"}
+                    ]
+                }, {
+                    "name": "bysymbolcode", "unique": true, 
+                    "orders": [
+                        {"field": "sym_code", "order": "asc"}, 
+                        {"field": "id", "order": "asc"}
                     ]
                 }
             ]

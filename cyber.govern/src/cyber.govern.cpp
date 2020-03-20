@@ -72,9 +72,11 @@ void govern::onblock(name producer, eosio::binary_extension<uint32_t> schedule_v
             remove_old_producers(producers_table);
         }
         s.schedule_version.emplace(schedule_version.value());
+    } else {
+        s.schedule_version.emplace(0);
     }
 
-    state.set(s, _self);
+    state.set(std::move(s), _self);
 }
 
 void govern::reward_workers(structures::state_info& s) {
@@ -263,7 +265,7 @@ void govern::setshift(int8_t shift) {
     auto s = state.get(); // no default values, because it was created on the first block, errors can happens only in tests
     eosio::check(shift != s.resize_shift.value(), "the shift has not changed");
     s.resize_shift.emplace(shift);
-    state.set(s, _self);
+    state.set(std::move(s), _self);
 }
 
 void govern::promote_producers(producers& producers_table) {

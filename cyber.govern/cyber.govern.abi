@@ -9,39 +9,21 @@
                 {"name": "amount", "type": "int64"}
             ]
         }, {
-            "name": "omission_struct", "base": "", 
-            "fields": [
-                {"name": "account", "type": "name"}, 
-                {"name": "count", "type": "uint16"}, 
-                {"name": "resets", "type": "uint16"}
-            ]
-        }, {
             "name": "onblock", "base": "", 
             "fields": [
-                {"name": "producer", "type": "name"}
-            ]
-        }, {
-            "name": "pending_producers_info", "base": "", 
-            "fields": [
-                {"name": "id", "type": "uint64"}, 
-                {"name": "accounts", "type": "name[]"}
+                {"name": "producer", "type": "name"}, 
+                {"name": "schedule_version", "type": "uint32$"}
             ]
         }, {
             "name": "producer_struct", "base": "", 
             "fields": [
-                {"name": "account", "type": "name"}
-            ]
-        }, {
-            "name": "schedule_resize_info", "base": "", 
-            "fields": [
-                {"name": "id", "type": "uint64"}, 
-                {"name": "last_step", "type": "time_point_sec"}, 
-                {"name": "shift", "type": "int8"}
-            ]
-        }, {
-            "name": "setactprods", "base": "", 
-            "fields": [
-                {"name": "pending_active_producers", "type": "name[]"}
+                {"name": "account", "type": "name"}, 
+                {"name": "is_oblidged", "type": "bool"}, 
+                {"name": "amount", "type": "int64"}, 
+                {"name": "unconfirmed_amount", "type": "int64"}, 
+                {"name": "omission_count", "type": "uint16"}, 
+                {"name": "omission_resets", "type": "uint16"}, 
+                {"name": "last_time", "type": "time_point_sec"}
             ]
         }, {
             "name": "setshift", "base": "", 
@@ -58,13 +40,15 @@
                 {"name": "funds", "type": "int64"}, 
                 {"name": "last_propose_block_num", "type": "uint32"}, 
                 {"name": "required_producers_num", "type": "uint16"}, 
-                {"name": "last_producers_num", "type": "uint16"}
+                {"name": "last_producers_num", "type": "uint16"}, 
+                {"name": "schedule_version", "type": "uint32$"}, 
+                {"name": "resize_shift", "type": "int8$"}, 
+                {"name": "last_resize_step", "type": "time_point_sec$"}
             ]
         }
     ], 
     "actions": [
         {"name": "onblock", "type": "onblock"}, 
-        {"name": "setactprods", "type": "setactprods"}, 
         {"name": "setshift", "type": "setshift"}
     ], 
     "events": [
@@ -89,52 +73,26 @@
                 }
             ]
         }, {
-            "name": "obligedprod", "type": "producer_struct", 
-            "indexes": [{
-                    "name": "primary", "unique": true, 
-                    "orders": [
-                        {"field": "account", "order": "asc"}
-                    ]
-                }
-            ]
-        }, {
-            "name": "omission", "type": "omission_struct", 
+            "name": "producer", "type": "producer_struct", 
             "indexes": [{
                     "name": "primary", "unique": true, 
                     "orders": [
                         {"field": "account", "order": "asc"}
                     ]
                 }, {
-                    "name": "bycount", "unique": false, 
+                    "name": "byoblidged", "unique": false, 
                     "orders": [
-                        {"field": "count", "order": "desc"}
+                        {"field": "is_oblidged", "order": "desc"}
                     ]
-                }
-            ]
-        }, {
-            "name": "pendingprods", "type": "pending_producers_info", 
-            "indexes": [{
-                    "name": "primary", "unique": true, 
+                }, {
+                    "name": "bybalance", "unique": false, 
                     "orders": [
-                        {"field": "id", "order": "asc"}
+                        {"field": "amount", "order": "desc"}
                     ]
-                }
-            ]
-        }, {
-            "name": "schedresize", "type": "schedule_resize_info", 
-            "indexes": [{
-                    "name": "primary", "unique": true, 
+                }, {
+                    "name": "bytime", "unique": false, 
                     "orders": [
-                        {"field": "id", "order": "asc"}
-                    ]
-                }
-            ]
-        }, {
-            "name": "uncbalance", "type": "balance_struct", 
-            "indexes": [{
-                    "name": "primary", "unique": true, 
-                    "orders": [
-                        {"field": "account", "order": "asc"}
+                        {"field": "last_time", "order": "asc"}
                     ]
                 }
             ]

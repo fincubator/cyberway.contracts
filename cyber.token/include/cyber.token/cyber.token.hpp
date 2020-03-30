@@ -251,7 +251,45 @@ namespace eosio {
             asset    balance;
             asset    payments;
 
+            // the following fields should not be accessed directly (should be in sync)
+            eosio::binary_extension<uint32_t, write_strategy::no_value> version; // if has value, it must be 0. (can be flags to indicate enabled addons; will require custon `unpack`)
             eosio::binary_extension<safe_t, write_strategy::no_value> safe;
+
+            void validate() const {
+               bool has_ver = version.has_value();
+               bool has_safe = safe.has_value();
+               bool valid = has_ver == has_safe && (!has_ver || version.value() == 0);
+               check(valid, "SYS: invalid account structure");
+            }
+
+            bool has_safe() const {
+               return safe.has_value();
+            }
+
+            safe_t get_safe() const {
+               validate();
+               check(has_safe(), "safe disabled");
+               return safe.value();
+            }
+
+            void create_safe(const safe_t& value) {
+               validate();
+               check(!has_safe(), "SYS: failed to create_safe");
+               version.emplace(0);
+               safe.emplace(value);
+               validate();
+            }
+
+            void modify_safe(const safe_t& value) {
+               safe.emplace(value);
+               validate();
+            }
+
+            void remove_safe() {
+               version.reset();
+               safe.reset();
+               validate();
+            }
 
             uint64_t primary_key()const { return balance.symbol.code().raw(); }
          };

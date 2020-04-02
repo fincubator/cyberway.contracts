@@ -7,6 +7,7 @@
             "fields": [
                 {"name": "balance", "type": "asset"}, 
                 {"name": "payments", "type": "asset"}, 
+                {"name": "version", "type": "uint32$"}, 
                 {"name": "safe", "type": "safe_t$"}
             ]
         }, {

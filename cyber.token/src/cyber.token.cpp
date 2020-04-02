@@ -165,12 +165,12 @@ void token::sub_balance( name owner, asset value ) {
       });
 
    check(!is_locked(_self, owner), "balance locked in safe");
-   if (from.safe.has_value()) {
+   if (from.has_safe()) {
       from_acnts.modify(from, owner, [&](auto& a) {
-         auto safe = a.safe.value();
+         auto safe = a.get_safe();
          safe.unlocked -= value.amount;
          check(safe.unlocked >= 0, "overdrawn safe unlocked balance");
-         a.safe.emplace(safe);
+         a.modify_safe(safe);
       });
    }
 }
@@ -240,7 +240,8 @@ void token::close( name owner, const symbol& symbol )
    eosio::check( it != acnts.end(), "Balance row already deleted or never existed. Action won't have any effect." );
    eosio::check( it->balance.amount == 0, "Cannot close because the balance is not zero." );
    eosio::check( it->payments.amount == 0, "Cannot close because account has payments." );
-   eosio::check( !it->safe.has_value(), "Cannot close because safe enabled." );
+   eosio::check( !it->has_safe(), "Cannot close because safe enabled." );
+   it->validate();
    acnts.erase( it );
 }
 
@@ -320,7 +321,7 @@ void token::enablesafe(name owner, asset unlock, uint32_t delay, name trusted) {
    accounts tbl(_self, owner.value);
    const auto scode = unlock.symbol.code();
    const auto& acc = tbl.get(scode.raw(), "no token account object found");
-   check(!acc.safe.has_value(), "safe already enabled");
+   check(!acc.has_safe(), "safe already enabled");
 
    // Do not allow to have delayed changes when enable the safe, they came from the previously enabled safe
    // and should be cancelled to make clean safe setup.
@@ -330,7 +331,7 @@ void token::enablesafe(name owner, asset unlock, uint32_t delay, name trusted) {
    check(itr == idx.end() || itr->sym_code != scode, "can't enable safe with existing delayed mods");
 
    tbl.modify(acc, owner, [&](auto& a) {
-      a.safe.emplace(safe_t{unlock.amount, delay, trusted});
+      a.create_safe(safe_t{unlock.amount, delay, trusted});
    });
 }
 
@@ -341,11 +342,11 @@ void instant_safe_change(Tbl& tbl, S& acc,
    if (delay && *delay == 0) {
       check(!unlock && !trusted, "SYS: incorrect disabling safe mod");
       tbl.modify(acc, owner, [](auto& a){
-         a.safe.reset();
+         a.remove_safe();
       });
    } else {
       bool changed = !ensure_change;
-      auto safe = acc.safe.value();
+      auto safe = acc.get_safe();
       if (unlock) {
             safe.unlocked += unlock;
             check(safe.unlocked >= 0 && safe.unlocked <= asset::max_amount, "unlocked overflow");
@@ -361,7 +362,7 @@ void instant_safe_change(Tbl& tbl, S& acc,
       }
       check(changed, "change has no effect and can be cancelled");
       tbl.modify(acc, owner, [&](auto& a) {
-         a.safe.emplace(safe);
+         a.modify_safe(safe);
       });
    }
 }
@@ -389,8 +390,7 @@ void token::delay_safe_change(
    const auto scode = unlock.symbol.code();
    accounts tbl(_self, owner.value);
    const auto& acc = tbl.get(scode.raw(), "no token account object found");
-   check(acc.safe.has_value(), "safe disabled");
-   auto safe = acc.safe.value();
+   auto safe = acc.get_safe();
 
    const bool have_id = mod_id != name();
    const auto trusted_acc = safe.trusted;
@@ -433,16 +433,14 @@ void token::locksafe(name owner, asset lock) {
    const auto scode = lock.symbol.code();
    accounts tbl(_self, owner.value);
    const auto& acc = tbl.get(scode.raw(), "no token account object found");
-   check(acc.safe.has_value(), "safe disabled");
-   auto safe = acc.safe.value();
+   auto safe = acc.get_safe();
    check(safe.unlocked > 0, "nothing to lock");
    check(safe.unlocked >= lock.amount, "lock must be <= unlocked");
 
    bool lock_all = lock.amount == 0;
    tbl.modify(acc, owner, [&](auto& a) {
-      auto safe = a.safe.value();
       safe.unlocked -= lock_all ? safe.unlocked : lock.amount;
-      a.safe.emplace(safe);
+      a.modify_safe(safe);
    });
 }
 
@@ -461,8 +459,7 @@ void token::applysafemod(name owner, name mod_id) {
 
    accounts tbl(_self, owner.value);
    const auto& acc = tbl.get(mod.sym_code.raw(), "no token account object found");
-   check(acc.safe.has_value(), "safe disabled");
-   const auto& safe = acc.safe.value();
+   const auto& safe = acc.get_safe();
 
    bool trusted_apply = safe.trusted != name() && has_auth(safe.trusted);
    if (!trusted_apply) {

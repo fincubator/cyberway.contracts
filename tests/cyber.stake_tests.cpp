@@ -1630,9 +1630,10 @@ BOOST_FIXTURE_TEST_CASE(returns, cyber_stake_tester) try {
     const account_name _ltrack = N(ym2imjop4l5n);
     const account_name _drugan7 = N(rzi4tcizzvyw);
     const account_name _gunblade = N(xt351mrztghr);
+    const account_name _quanto = N(usr11zeqrhnk);
 
     BOOST_TEST_MESSAGE("-- create accounts");
-    create_accounts({_mike2mike, _ltrack, _drugan7, _gunblade});
+    create_accounts({_mike2mike, _ltrack, _drugan7, _gunblade, _quanto});
 
     BOOST_TEST_MESSAGE("-- open stake accounts");
     BOOST_CHECK_EQUAL(success(), token.create(_issuer, asset(1000000, token._symbol)));
@@ -1640,6 +1641,7 @@ BOOST_FIXTURE_TEST_CASE(returns, cyber_stake_tester) try {
     BOOST_CHECK_EQUAL(success(), stake.open(_mike2mike, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_ltrack, token._symbol.to_symbol_code()));
     BOOST_CHECK_EQUAL(success(), stake.open(_drugan7, token._symbol.to_symbol_code()));
+    BOOST_CHECK_EQUAL(success(), stake.open(_quanto, token._symbol.to_symbol_code()));
 
     BOOST_TEST_MESSAGE("-- try to return losses with closed account for gunblade");
     BOOST_CHECK_EQUAL(err.agent_doesnt_exist, stake.return_losses(_issuer));

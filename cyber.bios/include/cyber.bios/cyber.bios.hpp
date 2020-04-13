@@ -171,6 +171,9 @@ namespace cyber {
          void setabi( name account, const std::vector<char>& abi ) {}
 
          [[eosio::action]]
+         void checkversion( ignore<name> account, ignore<std::optional<eosio::checksum256>> abi_version, ignore<std::optional<eosio::checksum256>> code_version ) {}
+
+         [[eosio::action]]
          void checkwin();
 
          [[eosio::action]]

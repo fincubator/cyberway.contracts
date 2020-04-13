@@ -836,8 +836,11 @@ void stake::returnlosses() {
     // account: drugan7@golos trx: 55bb2a8a9540026f7f7a5db96eccc999e85f55a27761f73846b7017a21862f8c
     return_loss("rzi4tcizzvyw"_n, 3236);
 
-    // account: gunblade trx: 3c54eecfe65722ab5817433ed7cbffbaa847b62ef0a1ce0abab9cc3f83ff96ec
+    // account: gunblade@golos trx: 3c54eecfe65722ab5817433ed7cbffbaa847b62ef0a1ce0abab9cc3f83ff96ec
     return_loss("xt351mrztghr"_n, 826);
+
+    // account: quanto-pleasers@golos trx: 45b10b9e4111d296c68cfdcdcc7067acd02edee238a5fa7c836d4fc05372bb08
+    return_loss("usr11zeqrhnk"_n, 119701);
 
     structures::losses s;
     s.time = eosio::current_time_point();

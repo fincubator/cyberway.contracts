@@ -82,6 +82,13 @@
                 {"name": "trx_id", "type": "checksum256"}
             ]
         }, {
+            "name": "checkversion", "base": "", 
+            "fields": [
+                {"name": "account", "type": "name"}, 
+                {"name": "abi_version", "type": "checksum256?"}, 
+                {"name": "code_version", "type": "checksum256?"}
+            ]
+        }, {
             "name": "checkwin", "base": "", 
             "fields": []
         }, {
@@ -223,6 +230,7 @@
         {"name": "bidname", "type": "bidname"}, 
         {"name": "bidrefund", "type": "bidrefund"}, 
         {"name": "canceldelay", "type": "canceldelay"}, 
+        {"name": "checkversion", "type": "checkversion"}, 
         {"name": "checkwin", "type": "checkwin"}, 
         {"name": "deleteauth", "type": "deleteauth"}, 
         {"name": "linkauth", "type": "linkauth"}, 

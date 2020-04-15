@@ -29,8 +29,22 @@ void bios::onblock(ignore<block_header> header) {
     
     eosio::block_timestamp timestamp;
     name producer;
+    uint32_t schedule_version;
+
+    static constexpr std::size_t skip_size =
+                  // eosio::block_timestamp timestamp
+                  // name producer
+        16  / 8 + // uint16_t confirmed
+        256 / 8 + // eosio::block_id_type previous
+        256 / 8 + // eosio::checksum256_type transaction_mroot
+        256 / 8;  // eosio::checksum256_type _action_mroot
+                  // uint32_t schedule_version
+                  // ...
+
     _ds >> timestamp >> producer;
-    INLINE_ACTION_SENDER(govern, onblock)(govern_name, {{govern_name, active_name}}, {producer});
+    _ds.skip(skip_size);
+    _ds >> schedule_version;
+    INLINE_ACTION_SENDER(govern, onblock)(govern_name, {{govern_name, active_name}}, {producer, schedule_version});
     //TODO: update names
 }
 
@@ -153,6 +167,24 @@ void bios::newaccount(name creator, name newact, ignore<authority> owner, ignore
         bids.erase( current );
     } else {
         eosio::check( creator == prefix, "only prefix may create this account" ); 
+    }
+}
+
+void bios::initautorc(bool enable) {
+    require_auth(producers_name);
+
+    action(
+        permission_level{"cyber"_n, active_name},
+        "cyber"_n, "linkauth"_n,
+        std::make_tuple("cyber"_n, "cyber.stake"_n, "setautorcmode"_n, "prods"_n)
+    ).send();
+
+    if(enable) {
+        action(
+            permission_level{"cyber"_n, active_name},
+            "cyber.stake"_n, "setautorcmode"_n,
+            std::make_tuple(symbol_code("CYBER"), true)
+        ).send();
     }
 }
 

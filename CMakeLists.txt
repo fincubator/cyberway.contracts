@@ -59,16 +59,7 @@ endmacro()
 
 set(CYBERWAY_ABIDIFF ${CYBERWAY_CDT_ROOT}/bin/cyberway-abidiff)
 
-add_subdirectory(cyber.bios)
-add_subdirectory(cyber.msig)
 add_subdirectory(cyber.token)
-add_subdirectory(cyber.domain)
-add_subdirectory(cyber.stake)
-add_subdirectory(cyber.govern)
-add_subdirectory(cyber.rejector)
-add_subdirectory(cyber.incomereject)
-
-add_subdirectory(scripts/base-genesis)
 
 if (APPLE)
    set(OPENSSL_ROOT "/usr/local/opt/openssl")
@@ -76,5 +67,3 @@ elseif (UNIX)
    set(OPENSSL_ROOT "/usr/include/openssl")
 endif()
 set(SECP256K1_ROOT "/usr/local")
-
-include(UnitTestsExternalProject.txt)

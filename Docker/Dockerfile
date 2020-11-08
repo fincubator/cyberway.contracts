@@ -35,11 +35,6 @@ RUN apt-get update \
 
 COPY --from=builder /opt/cyberway.contracts/ /opt/cyberway.contracts/
 
-COPY --from=builder /cyberway.contracts/build/tests/unit_test /opt/cyberway.contracts/unit_test
-COPY --from=builder /cyberway.contracts/tests/test_contracts /opt/cyberway.contracts/test_contracts
-
-COPY --from=builder /cyberway.contracts/scripts/bios-boot-sequence /opt/cyberway.contracts/scripts/bios-boot-sequence
-
 COPY --from=builder /usr/local/lib/libbson-1.0.so.0.0.0 /usr/local/lib/
 COPY --from=cyberway /opt/cyberway/bin/cleos /opt/cyberway/bin/cleos
 COPY --from=cyberway /opt/cyberway/bin/keosd /opt/cyberway/bin/keosd
